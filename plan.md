@@ -20,6 +20,7 @@
 * **Git Repositories Required:**
 * `rpi-cluster-ansible`: Contains a single `local.yml` playbook executed by nodes on first boot.
 * `rpi-cluster-gitops`: Contains Kubernetes manifests categorized into `/infrastructure` (Longhorn, monitoring) and `/apps` (Home Assistant, Web server, NAS).
+* **Actual layout used:** committed as one monorepo, `github.com/Miro-Ali-Akbar/pi-cluster`, with `rpi-cluster-ansible/` and `rpi-cluster-gitops/` as subdirectories rather than two separate repos — `ansible-pull` uses `-d rpi-cluster-ansible` and `flux bootstrap` uses `--path=rpi-cluster-gitops/clusters/my-cluster` to point into the right subdirectory (see each subdirectory's README for the exact commands).
 
 
 

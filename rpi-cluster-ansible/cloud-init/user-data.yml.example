@@ -25,6 +25,6 @@ runcmd:
   - exec > /var/log/firstrun-ansible.log 2>&1
   - apt update && apt install -y ansible git
   - >
-    ansible-pull -U https://github.com/<your-username>/rpi-cluster-ansible.git
-    -i localhost, local.yml
+    ansible-pull -U https://github.com/Miro-Ali-Akbar/pi-cluster.git
+    -d rpi-cluster-ansible -i localhost, local.yml
     --extra-vars "pi4_local_ip=<PI4_LOCAL_IP>"

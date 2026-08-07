@@ -18,7 +18,7 @@ Run once, from an operator's workstation — never from unattended cloud-init
 any node):
 
 ```
-flux bootstrap github --owner=<your-username> --repository=rpi-cluster-gitops --path=clusters/my-cluster
+flux bootstrap github --owner=Miro-Ali-Akbar --repository=pi-cluster --path=rpi-cluster-gitops/clusters/my-cluster
 ```
 
 This populates `clusters/my-cluster/flux-system/` (Flux's own manifests) and
