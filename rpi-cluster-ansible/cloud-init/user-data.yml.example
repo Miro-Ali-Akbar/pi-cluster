@@ -1,0 +1,30 @@
+#cloud-config
+# Raspberry Pi OS Imager "OS Customization" -> "Advanced options" -> paste this
+# as user-data (or the equivalent first-boot script field), one copy per node.
+#
+# Fill in the placeholders below before flashing each SD card:
+#   <PI4_LOCAL_IP>        - the Pi 4's reserved DHCP IP (see plan.md step 2)
+#   <CLUSTER_SSH_PRIVATE_KEY> - contents of the shared cluster keypair's private key
+#                               (see rpi-cluster-ansible/README.md - generate once,
+#                               reuse across all three nodes, never commit it to git)
+#   <CLUSTER_SSH_PUBLIC_KEY>  - the matching .pub file contents
+
+write_files:
+  - path: /etc/rpi-cluster/id_ed25519
+    permissions: "0600"
+    owner: root:root
+    content: |
+      <CLUSTER_SSH_PRIVATE_KEY>
+  - path: /etc/rpi-cluster/id_ed25519.pub
+    permissions: "0644"
+    owner: root:root
+    content: |
+      <CLUSTER_SSH_PUBLIC_KEY>
+
+runcmd:
+  - exec > /var/log/firstrun-ansible.log 2>&1
+  - apt update && apt install -y ansible git
+  - >
+    ansible-pull -U https://github.com/<your-username>/rpi-cluster-ansible.git
+    -i localhost, local.yml
+    --extra-vars "pi4_local_ip=<PI4_LOCAL_IP>"

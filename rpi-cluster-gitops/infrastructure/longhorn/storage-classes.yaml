@@ -1,0 +1,26 @@
+# fast-ssd: Pi 4's USB3 SSD, for latency-sensitive workloads (databases, caches).
+apiVersion: storage.k8s.io/v1
+kind: StorageClass
+metadata:
+  name: fast-ssd
+provisioner: driver.longhorn.io
+allowVolumeExpansion: true
+parameters:
+  numberOfReplicas: "1"
+  diskSelector: fast-ssd
+  nodeSelector: fast-ssd
+---
+# bulk-hdd: the two Pi 3 USB2 HDDs, for bulk/NAS-style storage.
+# numberOfReplicas: 2 is the practical ceiling with only two storage-eligible
+# nodes — see plan.md's "RAID Replication" section for the accepted-risk
+# window this implies and the recommendation to pair with off-cluster backup.
+apiVersion: storage.k8s.io/v1
+kind: StorageClass
+metadata:
+  name: bulk-hdd
+provisioner: driver.longhorn.io
+allowVolumeExpansion: true
+parameters:
+  numberOfReplicas: "2"
+  diskSelector: bulk-hdd
+  nodeSelector: bulk-hdd

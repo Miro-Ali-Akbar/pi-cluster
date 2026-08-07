@@ -1,0 +1,150 @@
+---
+- name: Configure Raspberry Pi K3s cluster node
+  hosts: localhost
+  connection: local
+  become: true
+
+  vars:
+    cgroup_flags: "cgroup_enable=cpuset cgroup_memory=1 cgroup_enable=memory"
+    cmdline_path: /boot/firmware/cmdline.txt
+    reboot_sentinel: /etc/ansible_cgroup_rebooted
+    fast_storage_mount: /mnt/fast-storage
+    bulk_storage_mount: /mnt/bulk-storage
+    k3s_server_port: 6443
+    # Fill in with the Pi 4's reserved DHCP IP (see plan.md step 2's MAC-to-IP table)
+    # before flashing the SD cards, or override with --extra-vars on ansible-pull.
+    pi4_local_ip: "REPLACE_WITH_PI4_IP"
+    cluster_ssh_key: /etc/rpi-cluster/id_ed25519
+
+  tasks:
+    - name: Install open-iscsi (required by Longhorn)
+      ansible.builtin.apt:
+        name: open-iscsi
+        state: present
+        update_cache: true
+
+    - name: Enable and start iscsid
+      ansible.builtin.systemd:
+        name: iscsid
+        enabled: true
+        state: started
+
+    - name: Check whether cgroup flags are already present
+      ansible.builtin.command: "grep -q '{{ cgroup_flags }}' {{ cmdline_path }}"
+      register: cgroup_check
+      changed_when: false
+      failed_when: false
+
+    - name: Check whether we already rebooted for cgroup flags this boot generation
+      ansible.builtin.stat:
+        path: "{{ reboot_sentinel }}"
+      register: cgroup_reboot_sentinel
+
+    - name: Append cgroup flags to cmdline.txt
+      ansible.builtin.replace:
+        path: "{{ cmdline_path }}"
+        regexp: '^(.*)$'
+        replace: '\1 {{ cgroup_flags }}'
+      when: cgroup_check.rc != 0
+
+    - name: Record that a reboot has been requested for cgroup flags
+      ansible.builtin.file:
+        path: "{{ reboot_sentinel }}"
+        state: touch
+        mode: "0644"
+      when: cgroup_check.rc != 0 and not cgroup_reboot_sentinel.stat.exists
+
+    - name: Reboot to apply cgroup flags
+      ansible.builtin.reboot:
+        reboot_timeout: 300
+      when: cgroup_check.rc != 0 and not cgroup_reboot_sentinel.stat.exists
+
+    # --- Pi 4 (control plane) role ---
+    - name: Control-plane role tasks
+      when: ansible_memtotal_mb > 2000
+      block:
+        - name: Format SSD as ext4
+          community.general.filesystem:
+            fstype: ext4
+            dev: /dev/sda1
+          register: ssd_format
+
+        - name: Create fast-storage mount point
+          ansible.builtin.file:
+            path: "{{ fast_storage_mount }}"
+            state: directory
+            mode: "0755"
+
+        - name: Mount SSD at fast-storage
+          ansible.posix.mount:
+            path: "{{ fast_storage_mount }}"
+            src: /dev/sda1
+            fstype: ext4
+            state: mounted
+
+        - name: Check if K3s server is already installed
+          ansible.builtin.stat:
+            path: /usr/local/bin/k3s
+          register: k3s_installed
+
+        - name: Install K3s server (control plane, local-storage disabled)
+          ansible.builtin.shell: |
+            curl -sfL https://get.k3s.io | sh -s - --disable local-storage
+          when: not k3s_installed.stat.exists
+
+        - name: Restrict node-token to root, readable only over the trusted cluster SSH key
+          ansible.builtin.file:
+            path: /var/lib/rancher/k3s/server/node-token
+            mode: "0600"
+            owner: root
+            group: root
+
+        - name: Authorize the cluster deploy key for root-only SSH pull of the token
+          ansible.posix.authorized_key:
+            user: root
+            key: "{{ lookup('file', cluster_ssh_key + '.pub') }}"
+            key_options: 'command="cat /var/lib/rancher/k3s/server/node-token",no-port-forwarding,no-agent-forwarding,no-X11-forwarding'
+
+    # --- Pi 3 (worker) role ---
+    - name: Worker role tasks
+      when: ansible_memtotal_mb < 2000
+      block:
+        - name: Format USB HDD as ext4
+          community.general.filesystem:
+            fstype: ext4
+            dev: /dev/sda1
+          register: hdd_format
+
+        - name: Create bulk-storage mount point
+          ansible.builtin.file:
+            path: "{{ bulk_storage_mount }}"
+            state: directory
+            mode: "0755"
+
+        - name: Mount USB HDD at bulk-storage
+          ansible.posix.mount:
+            path: "{{ bulk_storage_mount }}"
+            src: /dev/sda1
+            fstype: ext4
+            state: mounted
+
+        - name: Check if K3s agent is already installed
+          ansible.builtin.stat:
+            path: /usr/local/bin/k3s-agent
+          register: k3s_agent_installed
+
+        - name: Fetch node token from the control plane over the restricted deploy key
+          ansible.builtin.command: >
+            ssh -i {{ cluster_ssh_key }} -o StrictHostKeyChecking=accept-new
+            root@{{ pi4_local_ip }} true
+          register: worker_node_token
+          changed_when: false
+          when: not k3s_agent_installed.stat.exists
+
+        - name: Join K3s cluster as agent
+          ansible.builtin.shell: >
+            curl -sfL https://get.k3s.io |
+            K3S_URL=https://{{ pi4_local_ip }}:{{ k3s_server_port }}
+            K3S_TOKEN={{ worker_node_token.stdout | trim }}
+            sh -s - agent
+          when: not k3s_agent_installed.stat.exists

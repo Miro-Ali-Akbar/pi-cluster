@@ -1,0 +1,42 @@
+# NAS via Samba. Bulk-hdd storage is bus-limited to ~35-40 MB/s over the Pi 3's
+# USB2 controller and the cluster's 10/100 Mbps switch (see plan.md's Critical
+# Hardware Limitations) — set expectations accordingly, this is not a
+# high-throughput file server.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: nas-samba
+  namespace: nas
+spec:
+  replicas: 1
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      app: nas-samba
+  template:
+    metadata:
+      labels:
+        app: nas-samba
+    spec:
+      nodeSelector:
+        node-role: worker
+      containers:
+        - name: samba
+          image: dperson/samba
+          args: ["-s", "share;/share;yes;no;yes;all"]
+          ports:
+            - containerPort: 445
+          resources:
+            requests:
+              cpu: 100m
+              memory: 128Mi
+            limits:
+              memory: 256Mi
+          volumeMounts:
+            - name: data
+              mountPath: /share
+      volumes:
+        - name: data
+          persistentVolumeClaim:
+            claimName: nas-data

@@ -1,0 +1,30 @@
+# PrometheusRule wiring Longhorn's built-in metrics to alert on Faulted/Degraded
+# volumes (plan.md step 4's alerting requirement). Assumes kube-prometheus-stack
+# or an equivalent Prometheus Operator install providing the PrometheusRule CRD
+# and an Alertmanager already configured with your webhook receiver
+# (Discord/Telegram/SMTP) — that receiver config is environment-specific and
+# intentionally not templated here; add it as alertmanager-config.yaml (sealed
+# or SOPS-encrypted) when you have the webhook URL/credentials.
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: longhorn-disk-health
+  namespace: monitoring
+spec:
+  groups:
+    - name: longhorn-disk-health
+      rules:
+        - alert: LonghornVolumeDegraded
+          expr: longhorn_volume_robustness == 2
+          for: 5m
+          labels:
+            severity: warning
+          annotations:
+            summary: "Longhorn volume {{ $labels.volume }} is degraded"
+        - alert: LonghornVolumeFaulted
+          expr: longhorn_volume_robustness == 3
+          for: 1m
+          labels:
+            severity: critical
+          annotations:
+            summary: "Longhorn volume {{ $labels.volume }} is faulted"

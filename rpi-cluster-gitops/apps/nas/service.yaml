@@ -1,0 +1,12 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: nas-samba
+  namespace: nas
+spec:
+  selector:
+    app: nas-samba
+  ports:
+    - name: smb
+      port: 445
+      targetPort: 445
