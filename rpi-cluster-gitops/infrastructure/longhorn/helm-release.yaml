@@ -17,6 +17,17 @@ spec:
         name: longhorn
         namespace: longhorn-system
   values:
+    # Longhorn's chart defaults to 3 replicas each of the CSI sidecars
+    # (attacher/provisioner/resizer/snapshotter = 12 pods), meant for HA
+    # across many nodes. On this single 2GB Pi 4 that's enough CPU/memory
+    # contention to starve everything else (Flux, Home Assistant) and cause
+    # kubelet heartbeat misses -> spurious NodeNotReady. One replica each is
+    # correct until there are enough nodes to make redundancy meaningful.
+    csi:
+      attacherReplicaCount: 1
+      provisionerReplicaCount: 1
+      resizerReplicaCount: 1
+      snapshotterReplicaCount: 1
     defaultSettings:
       # Only the two Pi 3 workers are storage-eligible; the Pi 4 control-plane
       # node is excluded (see plan.md's numberOfReplicas discussion — this is
