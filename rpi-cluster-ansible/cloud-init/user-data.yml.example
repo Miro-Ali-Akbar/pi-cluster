@@ -8,6 +8,12 @@
 #                               (see rpi-cluster-ansible/README.md - generate once,
 #                               reuse across all three nodes, never commit it to git)
 #   <CLUSTER_SSH_PUBLIC_KEY>  - the matching .pub file contents
+#   ssh_authorized_keys      - add your own login key under a `users:` section
+#                              (see rpi-cluster-ansible/README.md) - Raspberry Pi
+#                              OS ships the ssh service DISABLED by default, so
+#                              this file must also explicitly enable it (see
+#                              runcmd below) or you will never be able to log in
+#                              no matter how long you wait.
 
 write_files:
   - path: /etc/rpi-cluster/id_ed25519
@@ -22,8 +28,15 @@ write_files:
       <CLUSTER_SSH_PUBLIC_KEY>
 
 runcmd:
+  # Raspberry Pi OS ships sshd disabled by default - enable it explicitly.
+  - systemctl enable --now ssh
   - exec > /var/log/firstrun-ansible.log 2>&1
-  - apt update && apt install -y ansible git
+  - apt-get update
+  # ansible-core (not the full "ansible" metapackage) avoids pulling in
+  # Windows-remoting extras (python3-winrm/xmltodict/kerberos) we don't need
+  # and that have been known to 404 on the Debian trixie mirror.
+  - apt-get install -y --no-install-recommends ansible-core git
+  - ansible-galaxy collection install community.general ansible.posix
   - >
     ansible-pull -U https://github.com/Miro-Ali-Akbar/pi-cluster.git
     -d rpi-cluster-ansible -i localhost, local.yml
