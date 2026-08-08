@@ -42,6 +42,12 @@ spec:
               mountPath: /dev
             - name: dbus
               mountPath: /run/dbus
+            # /etc/letsencrypt/live/<domain>/*.pem are symlinks into
+            # ../../archive/<domain>/ - mount the whole letsencrypt dir
+            # (read-only) so those symlinks resolve, not just live/.
+            - name: letsencrypt
+              mountPath: /etc/letsencrypt
+              readOnly: true
       volumes:
         - name: config
           persistentVolumeClaim:
@@ -53,4 +59,8 @@ spec:
         - name: dbus
           hostPath:
             path: /run/dbus
+            type: Directory
+        - name: letsencrypt
+          hostPath:
+            path: /etc/letsencrypt
             type: Directory
