@@ -28,10 +28,29 @@ spec:
               memory: 256Mi
             limits:
               memory: 768Mi
+          # Zigbee USB dongle (/dev/serial/by-id, /dev/ttyACM0) and the Pi's
+          # onboard Bluetooth (hci0 via BlueZ over D-Bus) both need host device
+          # access - privileged + mounting /dev and /run/dbus is the standard
+          # pattern for this, since Bluetooth specifically goes through the
+          # host's bluetoothd over D-Bus rather than a plain device file.
+          securityContext:
+            privileged: true
           volumeMounts:
             - name: config
               mountPath: /config
+            - name: dev
+              mountPath: /dev
+            - name: dbus
+              mountPath: /run/dbus
       volumes:
         - name: config
           persistentVolumeClaim:
             claimName: home-assistant-config
+        - name: dev
+          hostPath:
+            path: /dev
+            type: Directory
+        - name: dbus
+          hostPath:
+            path: /run/dbus
+            type: Directory
