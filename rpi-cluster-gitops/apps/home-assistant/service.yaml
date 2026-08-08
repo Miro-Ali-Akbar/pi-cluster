@@ -4,6 +4,9 @@ metadata:
   name: home-assistant
   namespace: home-assistant
 spec:
+  # k3s's built-in ServiceLB exposes this on the node's LAN IP directly -
+  # simplest option for a single-node home cluster, no Ingress needed.
+  type: LoadBalancer
   selector:
     app: home-assistant
   ports:
