@@ -5,7 +5,7 @@ metadata:
   namespace: flux-system
 spec:
   interval: 10m
-  path: ./apps
+  path: ./rpi-cluster-gitops/apps
   prune: true
   dependsOn:
     - name: infrastructure
