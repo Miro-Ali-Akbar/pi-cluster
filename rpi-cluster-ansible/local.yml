@@ -114,6 +114,10 @@
           community.general.filesystem:
             fstype: ext4
             dev: /dev/sda1
+            # Repurposing external drives for cluster storage - any prior
+            # filesystem signature (e.g. leftover NTFS) is expected and safe
+            # to overwrite here, this is the drive's intended first use.
+            force: true
           register: ssd_format
 
         - name: Create fast-storage mount point
@@ -173,6 +177,9 @@
           community.general.filesystem:
             fstype: ext4
             dev: /dev/sda1
+            # Repurposing external drives for cluster storage - any prior
+            # filesystem signature is expected and safe to overwrite here.
+            force: true
           register: hdd_format
 
         - name: Create bulk-storage mount point
