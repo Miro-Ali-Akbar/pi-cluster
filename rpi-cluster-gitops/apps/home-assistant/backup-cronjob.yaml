@@ -1,0 +1,58 @@
+# Mirrors Home Assistant's own backup files (from its "Automatic backups"
+# feature, configured in the UI - see rpi-cluster-gitops README) onto
+# separate physical storage (bulk-hdd on pi3-1) every 6 hours. Runs on the
+# control-plane node so it can mount the RWO home-assistant-config PVC
+# alongside the HA pod (Longhorn allows two pods on the SAME node to share an
+# RWO volume); Longhorn transparently attaches the bulk-hdd destination
+# volume over the network from pi3-1 regardless.
+#
+# --delete mirrors HA's own retention (set in its Automatic backups UI) onto
+# the destination, rather than requiring a second, separately-managed
+# retention policy here.
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: home-assistant-backup-copy
+  namespace: home-assistant
+spec:
+  schedule: "0 */6 * * *"
+  concurrencyPolicy: Forbid
+  jobTemplate:
+    spec:
+      template:
+        spec:
+          nodeSelector:
+            node-role: control-plane
+          restartPolicy: OnFailure
+          containers:
+            - name: rsync
+              image: alpine:3.20
+              command:
+                - sh
+                - -c
+                - |
+                  set -e
+                  apk add --no-cache rsync
+                  rsync -a --delete /source/ /destination/
+                  echo "Backup copy complete: $(ls /destination | wc -l) file(s)"
+              resources:
+                requests:
+                  cpu: 50m
+                  memory: 64Mi
+                limits:
+                  memory: 128Mi
+              volumeMounts:
+                - name: config
+                  mountPath: /source
+                  subPath: backups
+                  readOnly: true
+                - name: backups
+                  mountPath: /destination
+          volumes:
+            - name: config
+              persistentVolumeClaim:
+                claimName: home-assistant-config
+                readOnly: true
+            - name: backups
+              persistentVolumeClaim:
+                claimName: home-assistant-backups

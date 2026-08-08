@@ -1,0 +1,17 @@
+# Destination for copied-off Home Assistant backups. Uses bulk-hdd (pi3-1's
+# USB HDD), a physically different node and disk from fast-ssd (Pi 4's SSD,
+# where the live home-assistant-config volume lives) - a real off-node copy,
+# not just a second file on the same disk. Stays Pending until that USB HDD
+# is attached and Longhorn's bulk-hdd disk is tagged (see plan.md).
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: home-assistant-backups
+  namespace: home-assistant
+spec:
+  accessModes:
+    - ReadWriteOnce
+  storageClassName: bulk-hdd
+  resources:
+    requests:
+      storage: 20Gi
