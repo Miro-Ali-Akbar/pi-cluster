@@ -17,6 +17,30 @@
     cluster_ssh_key: /etc/rpi-cluster/id_ed25519
 
   tasks:
+    - name: Install ansible-pull-on-boot systemd unit (idempotent re-run every boot)
+      ansible.builtin.copy:
+        dest: /etc/systemd/system/ansible-pull.service
+        mode: "0644"
+        content: |
+          [Unit]
+          Description=Ansible pull cluster bootstrap (runs every boot)
+          After=network-online.target
+          Wants=network-online.target
+
+          [Service]
+          Type=oneshot
+          ExecStart=/usr/bin/ansible-pull -U https://github.com/Miro-Ali-Akbar/pi-cluster.git -i localhost, rpi-cluster-ansible/local.yml --extra-vars "pi4_local_ip={{ pi4_local_ip }}"
+
+          [Install]
+          WantedBy=multi-user.target
+      register: ansible_pull_unit
+
+    - name: Enable ansible-pull-on-boot service
+      ansible.builtin.systemd:
+        name: ansible-pull
+        enabled: true
+        daemon_reload: "{{ ansible_pull_unit.changed }}"
+
     - name: Install open-iscsi (required by Longhorn)
       ansible.builtin.apt:
         name: open-iscsi
@@ -55,8 +79,14 @@
       when: cgroup_check.rc != 0 and not cgroup_reboot_sentinel.stat.exists
 
     - name: Reboot to apply cgroup flags
-      ansible.builtin.reboot:
-        reboot_timeout: 300
+      # ansible.builtin.reboot refuses to run over a local connection (it
+      # assumes it would be rebooting the Ansible control node). This is a
+      # local ansible-pull run on the node itself, so fire-and-forget a real
+      # reboot instead - the ansible-pull-on-boot service installed above
+      # picks the playbook back up on the next boot.
+      ansible.builtin.command: /sbin/shutdown -r now "Applying cgroup kernel flags"
+      async: 1
+      poll: 0
       when: cgroup_check.rc != 0 and not cgroup_reboot_sentinel.stat.exists
 
     # --- Pi 4 (control plane) role ---
