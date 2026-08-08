@@ -110,15 +110,25 @@
             fs_type: ext4
           when: not ssd_partition.stat.exists
 
-        - name: Format SSD as ext4
+        - name: Format freshly-partitioned SSD as ext4 (wipe any stale signature)
           community.general.filesystem:
             fstype: ext4
             dev: /dev/sda1
-            # Repurposing external drives for cluster storage - any prior
-            # filesystem signature (e.g. leftover NTFS) is expected and safe
-            # to overwrite here, this is the drive's intended first use.
+            # Repurposing external drives for cluster storage - a prior
+            # filesystem signature (e.g. leftover NTFS) is expected on first
+            # use. Only force here, on a partition we just created - never on
+            # later idempotent re-runs, where the drive is likely mounted and
+            # in active use.
             force: true
-          register: ssd_format
+          when: not ssd_partition.stat.exists
+          register: ssd_format_fresh
+
+        - name: Ensure SSD stays ext4 (idempotent, no force)
+          community.general.filesystem:
+            fstype: ext4
+            dev: /dev/sda1
+          when: ssd_partition.stat.exists
+          register: ssd_format_existing
 
         - name: Create fast-storage mount point
           ansible.builtin.file:
@@ -183,14 +193,22 @@
                 fs_type: ext4
               when: not hdd_partition.stat.exists
 
-            - name: Format USB HDD as ext4
+            - name: Format freshly-partitioned USB HDD as ext4 (wipe any stale signature)
               community.general.filesystem:
                 fstype: ext4
                 dev: /dev/sda1
-                # Repurposing external drives for cluster storage - any prior
-                # filesystem signature is expected and safe to overwrite here.
+                # Only force on a partition we just created - never on later
+                # idempotent re-runs, where the drive is likely mounted.
                 force: true
-              register: hdd_format
+              when: not hdd_partition.stat.exists
+              register: hdd_format_fresh
+
+            - name: Ensure USB HDD stays ext4 (idempotent, no force)
+              community.general.filesystem:
+                fstype: ext4
+                dev: /dev/sda1
+              when: hdd_partition.stat.exists
+              register: hdd_format_existing
 
             - name: Create bulk-storage mount point
               ansible.builtin.file:
