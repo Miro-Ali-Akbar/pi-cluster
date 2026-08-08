@@ -160,40 +160,50 @@
     - name: Worker role tasks
       when: node_role == 'worker'
       block:
-        - name: Check for an existing partition on the USB HDD
+        - name: Check whether a USB HDD is attached
           ansible.builtin.stat:
-            path: /dev/sda1
-          register: hdd_partition
+            path: /dev/sda
+          register: hdd_present
 
-        - name: Partition the USB HDD (whole-disk, ext4) if none exists yet
-          community.general.parted:
-            device: /dev/sda
-            number: 1
-            state: present
-            fs_type: ext4
-          when: not hdd_partition.stat.exists
+        # Bulk storage is optional at join time - a worker can join the
+        # cluster now and have a drive added later without re-running setup.
+        - name: USB HDD storage tasks
+          when: hdd_present.stat.exists
+          block:
+            - name: Check for an existing partition on the USB HDD
+              ansible.builtin.stat:
+                path: /dev/sda1
+              register: hdd_partition
 
-        - name: Format USB HDD as ext4
-          community.general.filesystem:
-            fstype: ext4
-            dev: /dev/sda1
-            # Repurposing external drives for cluster storage - any prior
-            # filesystem signature is expected and safe to overwrite here.
-            force: true
-          register: hdd_format
+            - name: Partition the USB HDD (whole-disk, ext4) if none exists yet
+              community.general.parted:
+                device: /dev/sda
+                number: 1
+                state: present
+                fs_type: ext4
+              when: not hdd_partition.stat.exists
 
-        - name: Create bulk-storage mount point
-          ansible.builtin.file:
-            path: "{{ bulk_storage_mount }}"
-            state: directory
-            mode: "0755"
+            - name: Format USB HDD as ext4
+              community.general.filesystem:
+                fstype: ext4
+                dev: /dev/sda1
+                # Repurposing external drives for cluster storage - any prior
+                # filesystem signature is expected and safe to overwrite here.
+                force: true
+              register: hdd_format
 
-        - name: Mount USB HDD at bulk-storage
-          ansible.posix.mount:
-            path: "{{ bulk_storage_mount }}"
-            src: /dev/sda1
-            fstype: ext4
-            state: mounted
+            - name: Create bulk-storage mount point
+              ansible.builtin.file:
+                path: "{{ bulk_storage_mount }}"
+                state: directory
+                mode: "0755"
+
+            - name: Mount USB HDD at bulk-storage
+              ansible.posix.mount:
+                path: "{{ bulk_storage_mount }}"
+                src: /dev/sda1
+                fstype: ext4
+                state: mounted
 
         - name: Check if K3s agent is already installed
           ansible.builtin.stat:
