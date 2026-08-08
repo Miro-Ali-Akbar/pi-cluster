@@ -15,6 +15,10 @@
     # before flashing the SD cards, or override with --extra-vars on ansible-pull.
     pi4_local_ip: "REPLACE_WITH_PI4_IP"
     cluster_ssh_key: /etc/rpi-cluster/id_ed25519
+    # RAM-based auto-detection is just a default - real hardware doesn't always
+    # match the plan's assumed SKUs (e.g. a 2GB Pi 4 doing control-plane duty).
+    # Override explicitly with --extra-vars "node_role=control-plane|worker".
+    node_role: "{{ 'control-plane' if ansible_memtotal_mb > 2000 else 'worker' }}"
 
   tasks:
     - name: Install ansible-pull-on-boot systemd unit (idempotent re-run every boot)
@@ -29,7 +33,7 @@
 
           [Service]
           Type=oneshot
-          ExecStart=/usr/bin/ansible-pull -U https://github.com/Miro-Ali-Akbar/pi-cluster.git -i localhost, rpi-cluster-ansible/local.yml --extra-vars "pi4_local_ip={{ pi4_local_ip }}"
+          ExecStart=/usr/bin/ansible-pull -U https://github.com/Miro-Ali-Akbar/pi-cluster.git -i localhost, rpi-cluster-ansible/local.yml --extra-vars "pi4_local_ip={{ pi4_local_ip }} node_role={{ node_role }}"
 
           [Install]
           WantedBy=multi-user.target
@@ -91,8 +95,21 @@
 
     # --- Pi 4 (control plane) role ---
     - name: Control-plane role tasks
-      when: ansible_memtotal_mb > 2000
+      when: node_role == 'control-plane'
       block:
+        - name: Check for an existing partition on the SSD
+          ansible.builtin.stat:
+            path: /dev/sda1
+          register: ssd_partition
+
+        - name: Partition the SSD (whole-disk, ext4) if none exists yet
+          community.general.parted:
+            device: /dev/sda
+            number: 1
+            state: present
+            fs_type: ext4
+          when: not ssd_partition.stat.exists
+
         - name: Format SSD as ext4
           community.general.filesystem:
             fstype: ext4
@@ -137,8 +154,21 @@
 
     # --- Pi 3 (worker) role ---
     - name: Worker role tasks
-      when: ansible_memtotal_mb < 2000
+      when: node_role == 'worker'
       block:
+        - name: Check for an existing partition on the USB HDD
+          ansible.builtin.stat:
+            path: /dev/sda1
+          register: hdd_partition
+
+        - name: Partition the USB HDD (whole-disk, ext4) if none exists yet
+          community.general.parted:
+            device: /dev/sda
+            number: 1
+            state: present
+            fs_type: ext4
+          when: not hdd_partition.stat.exists
+
         - name: Format USB HDD as ext4
           community.general.filesystem:
             fstype: ext4
