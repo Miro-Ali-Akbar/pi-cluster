@@ -14,6 +14,22 @@
 #                              this file must also explicitly enable it (see
 #                              runcmd below) or you will never be able to log in
 #                              no matter how long you wait.
+#   <CONSOLE_FALLBACK_PASSWORD_HASH> - a SHA-512 crypt hash (openssl passwd -6)
+#                              for a physical-console login fallback, in case
+#                              ssh/networking never comes up and you need to
+#                              type directly into the Pi (keyboard/HDMI or a
+#                              BadUSB-style HID injector). Keep the plaintext
+#                              password out of git - see .pi4-console-fallback-password.
+
+users:
+  - name: master
+    groups: [adm, sudo]
+    shell: /bin/bash
+    sudo: ALL=(ALL) NOPASSWD:ALL
+    lock_passwd: false
+    passwd: <CONSOLE_FALLBACK_PASSWORD_HASH>
+    ssh_authorized_keys:
+      - <YOUR_SSH_PUBLIC_KEY>
 
 write_files:
   - path: /etc/rpi-cluster/id_ed25519
