@@ -53,7 +53,9 @@ runcmd:
   # and that have been known to 404 on the Debian trixie mirror.
   - apt-get install -y --no-install-recommends ansible-core git
   - ansible-galaxy collection install community.general ansible.posix
+  # NOTE: -d specifies the checkout directory, NOT a subdirectory to look for
+  # the playbook in - the playbook path below is relative to the repo root.
   - >
     ansible-pull -U https://github.com/Miro-Ali-Akbar/pi-cluster.git
-    -d rpi-cluster-ansible -i localhost, local.yml
+    -i localhost, rpi-cluster-ansible/local.yml
     --extra-vars "pi4_local_ip=<PI4_LOCAL_IP>"
