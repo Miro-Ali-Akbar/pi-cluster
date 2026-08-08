@@ -1,0 +1,46 @@
+# Matter server needs host networking for mDNS-based device discovery and
+# commissioning - it can't work behind a normal ClusterIP/LoadBalancer
+# Service. Pinned to pi3-1 (the worker) to keep load off the already-tight
+# Pi 4 control-plane node. No Bluetooth/D-Bus passthrough - commissioning is
+# Wi-Fi/Thread only for this deployment (see rpi-cluster-gitops README).
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: matter-server
+  namespace: matter-server
+spec:
+  replicas: 1
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      app: matter-server
+  template:
+    metadata:
+      labels:
+        app: matter-server
+    spec:
+      nodeSelector:
+        node-role: worker
+      hostNetwork: true
+      dnsPolicy: ClusterFirstWithHostNet
+      containers:
+        - name: matter-server
+          image: ghcr.io/home-assistant-libs/python-matter-server:stable
+          args:
+            - --storage-path
+            - /data
+          resources:
+            requests:
+              cpu: 100m
+              memory: 128Mi
+            limits:
+              memory: 384Mi
+          volumeMounts:
+            - name: data
+              mountPath: /data
+      volumes:
+        - name: data
+          hostPath:
+            path: /var/lib/matter-server/data
+            type: DirectoryOrCreate
