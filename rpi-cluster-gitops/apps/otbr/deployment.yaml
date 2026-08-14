@@ -1,0 +1,62 @@
+# OpenThread Border Router - bridges the nRF52840 dongle's Thread radio
+# (flashed with the OpenThread ot-rcp firmware, USB CDC ACM at
+# /dev/ttyACM0) onto the LAN so Thread/Matter devices can be commissioned
+# and reached from home.miro.zip. Needs hostNetwork + privileged: it
+# manages its own network interfaces (thread0/wpan0) and NATs/routes
+# between the Thread mesh and eth0 (BACKBONE_INTERFACE), which isn't
+# possible from a normal pod network namespace. Pinned to pi3-1, the same
+# node the dongle is physically plugged into and where matter-server runs.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: otbr
+  namespace: otbr
+spec:
+  replicas: 1
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      app: otbr
+  template:
+    metadata:
+      labels:
+        app: otbr
+    spec:
+      nodeSelector:
+        node-role: worker
+      hostNetwork: true
+      dnsPolicy: ClusterFirstWithHostNet
+      containers:
+        - name: otbr
+          image: openthread/border-router:latest
+          securityContext:
+            privileged: true
+          env:
+            - name: OT_RCP_DEVICE
+              value: "spinel+hdlc+uart:///dev/serial/by-id/usb-Nordic_Semiconductor_nRF528xx_OpenThread_Device_FBE385FD611D-if00"
+            - name: OT_INFRA_IF
+              value: eth0
+          resources:
+            requests:
+              cpu: 100m
+              memory: 64Mi
+            limits:
+              memory: 256Mi
+          volumeMounts:
+            - name: dev
+              mountPath: /dev
+            # entrypoint does `mkdir -p /data/thread && ln -sft /var/lib
+            # /data/thread` itself - mounting straight onto /var/lib/thread
+            # collides with that symlink step.
+            - name: thread-data
+              mountPath: /data
+      volumes:
+        - name: dev
+          hostPath:
+            path: /dev
+            type: Directory
+        - name: thread-data
+          hostPath:
+            path: /var/lib/otbr/data
+            type: DirectoryOrCreate
