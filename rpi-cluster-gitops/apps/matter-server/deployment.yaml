@@ -1,8 +1,12 @@
 # Matter server needs host networking for mDNS-based device discovery and
 # commissioning - it can't work behind a normal ClusterIP/LoadBalancer
 # Service. Pinned to pi3-1 (the worker) to keep load off the already-tight
-# Pi 4 control-plane node. No Bluetooth/D-Bus passthrough - commissioning is
-# Wi-Fi/Thread only for this deployment (see rpi-cluster-gitops README).
+# Pi 4 control-plane node.
+#
+# BLE is required to commission any brand-new, unprovisioned device (it has
+# no IP connectivity yet, so BLE is the only way to hand it Wi-Fi/Thread
+# credentials) - uses pi3-1's onboard Bluetooth (hci0) over D-Bus/BlueZ,
+# same pattern as Home Assistant's own Bluetooth passthrough.
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -30,6 +34,10 @@ spec:
           args:
             - --storage-path
             - /data
+            - --bluetooth-adapter
+            - "0"
+          securityContext:
+            privileged: true
           resources:
             requests:
               cpu: 100m
@@ -39,8 +47,14 @@ spec:
           volumeMounts:
             - name: data
               mountPath: /data
+            - name: dbus
+              mountPath: /run/dbus
       volumes:
         - name: data
           hostPath:
             path: /var/lib/matter-server/data
             type: DirectoryOrCreate
+        - name: dbus
+          hostPath:
+            path: /run/dbus
+            type: Directory
