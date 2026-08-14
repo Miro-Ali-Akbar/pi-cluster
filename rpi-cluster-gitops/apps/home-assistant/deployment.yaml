@@ -17,6 +17,12 @@ spec:
     spec:
       nodeSelector:
         node-role: control-plane # pin to the Pi 4 alongside its fast-ssd disk
+      # Needed for mDNS/zeroconf discovery (Thread border routers, Cast,
+      # HomeKit, etc.) - from inside the flannel overlay, HA never sees
+      # multicast traffic from the physical LAN at all. Matches the same
+      # reasoning matter-server uses hostNetwork for.
+      hostNetwork: true
+      dnsPolicy: ClusterFirstWithHostNet
       containers:
         - name: home-assistant
           image: ghcr.io/home-assistant/home-assistant:stable

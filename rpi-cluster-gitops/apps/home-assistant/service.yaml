@@ -4,9 +4,11 @@ metadata:
   name: home-assistant
   namespace: home-assistant
 spec:
-  # k3s's built-in ServiceLB exposes this on the node's LAN IP directly -
-  # simplest option for a single-node home cluster, no Ingress needed.
-  type: LoadBalancer
+  # ClusterIP, not LoadBalancer: the pod runs with hostNetwork now (for
+  # mDNS discovery) and already binds 8123 directly on pi4's LAN IP, which
+  # would collide with ServiceLB's own hostNetwork proxy pod on the same
+  # node/port. External access is unchanged - same node IP:8123 either way.
+  type: ClusterIP
   selector:
     app: home-assistant
   ports:
