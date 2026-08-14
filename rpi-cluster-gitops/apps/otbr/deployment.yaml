@@ -3,9 +3,9 @@
 # /dev/ttyACM0) onto the LAN so Thread/Matter devices can be commissioned
 # and reached from home.miro.zip. Needs hostNetwork + privileged: it
 # manages its own network interfaces (thread0/wpan0) and NATs/routes
-# between the Thread mesh and eth0 (BACKBONE_INTERFACE), which isn't
-# possible from a normal pod network namespace. Pinned to pi3-1, the same
-# node the dongle is physically plugged into and where matter-server runs.
+# between the Thread mesh and eth0 (OT_INFRA_IF), which isn't possible
+# from a normal pod network namespace. Pinned to pi3-1, the same node the
+# dongle is physically plugged into and where matter-server runs.
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -37,6 +37,13 @@ spec:
               value: "spinel+hdlc+uart:///dev/serial/by-id/usb-Nordic_Semiconductor_nRF528xx_OpenThread_Device_FBE385FD611D-if00"
             - name: OT_INFRA_IF
               value: eth0
+            # Default is 127.0.0.1, which with hostNetwork means "pi3-1's
+            # own loopback only" - Home Assistant (on pi4) needs to reach
+            # these over the LAN to push/read the Thread dataset.
+            - name: OT_REST_LISTEN_ADDR
+              value: "0.0.0.0"
+            - name: OT_WEB_LISTEN_ADDR
+              value: "0.0.0.0"
           resources:
             requests:
               cpu: 100m
