@@ -28,6 +28,10 @@ spec:
       provisionerReplicaCount: 1
       resizerReplicaCount: 1
       snapshotterReplicaCount: 1
+    # Dashboard UI, not needed for storage to function - never used, disabled
+    # entirely to free up its memory footprint on the 2GB node.
+    longhornUI:
+      replicas: 0
     defaultSettings:
       # Only the two Pi 3 workers are storage-eligible; the Pi 4 control-plane
       # node is excluded (see plan.md's numberOfReplicas discussion — this is

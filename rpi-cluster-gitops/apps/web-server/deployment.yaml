@@ -16,7 +16,7 @@ spec:
         app: web-server
     spec:
       nodeSelector:
-        node-role: control-plane
+        node-role: worker # moved off pi4 to relieve its chronic memory pressure - Longhorn attaches the fast-ssd-backed PVC over the network regardless of which node the pod runs on
       containers:
         - name: nginx
           image: nginx:stable
