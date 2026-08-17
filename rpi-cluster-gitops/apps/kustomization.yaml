@@ -4,5 +4,3 @@ resources:
   - home-assistant
   - web-server
   - nas
-  - matter-server
-  - otbr
