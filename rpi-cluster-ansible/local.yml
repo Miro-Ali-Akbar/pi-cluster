@@ -143,6 +143,26 @@
             fstype: ext4
             state: mounted
 
+        - name: Ensure /etc/rancher/k3s exists
+          ansible.builtin.file:
+            path: /etc/rancher/k3s
+            state: directory
+            mode: "0755"
+
+        - name: Disable unneeded k3s bundled components (traefik, metrics-server)
+          # Neither is used here (no Ingress, no HPA/kubectl top) - each is a
+          # whole extra pod competing for memory on a 2GB node. This is a
+          # config file, not an install flag, so it also applies on nodes
+          # that were already provisioned before this was added - re-running
+          # ansible-pull picks it up, just restart k3s afterward to apply.
+          ansible.builtin.copy:
+            dest: /etc/rancher/k3s/config.yaml
+            mode: "0644"
+            content: |
+              disable:
+                - traefik
+                - metrics-server
+
         - name: Check if K3s server is already installed
           ansible.builtin.stat:
             path: /usr/local/bin/k3s
