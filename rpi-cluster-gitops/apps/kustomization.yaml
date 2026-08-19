@@ -6,3 +6,4 @@ resources:
   - nas
   - matter-server
   - otbr
+  - zigbee-bridge

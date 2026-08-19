@@ -1,0 +1,60 @@
+# The Zigbee dongle physically moved from Pi 4 (where Home Assistant runs) to
+# pi3-1. HA's hostPath-based passthrough only works on the same node the
+# device is plugged into, so instead of moving HA, we bridge the dongle over
+# the network - same pattern as OTBR bridges the Thread radio. ser2net
+# exposes the serial device as a plain TCP socket; HA's ZHA integration
+# connects to it via socket://192.168.0.104:6638 instead of a local device
+# path. hostNetwork so the TCP port is directly reachable at pi3-1's IP.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: zigbee-bridge
+  namespace: zigbee-bridge
+spec:
+  replicas: 1
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      app: zigbee-bridge
+  template:
+    metadata:
+      labels:
+        app: zigbee-bridge
+    spec:
+      nodeSelector:
+        node-role: worker
+      hostNetwork: true
+      containers:
+        - name: ser2net
+          image: alpine:3.20
+          command:
+            - sh
+            - -c
+            - |
+              set -e
+              apk add --no-cache ser2net
+              cat > /etc/ser2net.yaml << 'EOF'
+              connection: &zigbee
+                accepter: tcp,6638
+                connector: serialdev,/dev/serial/by-id/usb-ITEAD_SONOFF_Zigbee_3.0_USB_Dongle_Plus_V2_20220713113305-if00,115200n81,xonxoff,local
+                options:
+                  kickolduser: true
+              EOF
+              exec ser2net -c /etc/ser2net.yaml -d
+          securityContext:
+            privileged: true
+          resources:
+            requests:
+              cpu: 50m
+              memory: 32Mi
+            limits:
+              memory: 128Mi
+          volumeMounts:
+            - name: dev
+              mountPath: /dev
+      volumes:
+        - name: dev
+          hostPath:
+            path: /dev
+            type: Directory
