@@ -34,14 +34,13 @@ spec:
             - |
               set -e
               apk add --no-cache ser2net
-              cat > /etc/ser2net.yaml << 'EOF'
-              connection: &zigbee
-                accepter: tcp,6638
-                connector: serialdev,/dev/serial/by-id/usb-ITEAD_SONOFF_Zigbee_3.0_USB_Dongle_Plus_V2_20220713113305-if00,115200n81,xonxoff,local
-                options:
-                  kickolduser: true
+              # Alpine 3.20 ships ser2net 3.5.1, which uses the classic plain-text
+              # ser2net.conf format (port:state:timeout:device:serial-params) -
+              # NOT the YAML config format added in ser2net 4.x.
+              cat > /etc/ser2net.conf << 'EOF'
+              6638:raw:0:/dev/serial/by-id/usb-ITEAD_SONOFF_Zigbee_3.0_USB_Dongle_Plus_V2_20220713113305-if00:115200 8DATABITS NONE 1STOPBIT XONXOFF
               EOF
-              exec ser2net -c /etc/ser2net.yaml -d
+              exec ser2net -c /etc/ser2net.conf -d
           securityContext:
             privileged: true
           resources:
