@@ -24,7 +24,7 @@ spec:
         app: otbr
     spec:
       nodeSelector:
-        node-role: worker
+        kubernetes.io/hostname: pi3-1 # pinned by hostname, not role - depends on the Thread dongle physically plugged into this specific node
       hostNetwork: true
       dnsPolicy: ClusterFirstWithHostNet
       containers:

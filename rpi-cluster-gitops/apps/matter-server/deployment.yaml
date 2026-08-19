@@ -25,7 +25,7 @@ spec:
         app: matter-server
     spec:
       nodeSelector:
-        node-role: worker
+        kubernetes.io/hostname: pi3-1 # pinned by hostname, not role - depends on the Bluetooth/Thread hardware physically on this specific node
       hostNetwork: true
       dnsPolicy: ClusterFirstWithHostNet
       containers:

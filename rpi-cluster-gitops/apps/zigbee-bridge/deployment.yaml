@@ -23,7 +23,7 @@ spec:
         app: zigbee-bridge
     spec:
       nodeSelector:
-        node-role: worker
+        kubernetes.io/hostname: pi3-1 # pinned by hostname, not role - depends on the Zigbee dongle physically plugged into this specific node
       hostNetwork: true
       containers:
         - name: ser2net
