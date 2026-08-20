@@ -1,33 +1,170 @@
-# Cluster
+# Home Cluster
 
-Raspberry Pi K3s home cluster. Start with [`plan.md`](plan.md) for the full
-design (hardware, software choices, and the numbered order of operations) —
-this README just maps those steps onto the repos in this checkout.
+A 3-node Raspberry Pi K3s cluster running home automation, Zigbee/Matter/Thread
+bridging, and multi-room Bluetooth audio casting. Provisioned hands-off via
+`ansible-pull` on each node's own boot, apps deployed via Flux GitOps.
 
-| plan.md step | Where it lives |
-| --- | --- |
-| 1. Ansible automation repo | [`rpi-cluster-ansible/`](rpi-cluster-ansible/) — `local.yml` |
-| 2. Flash drives & inject cloud-init | [`rpi-cluster-ansible/cloud-init/user-data.yml.example`](rpi-cluster-ansible/cloud-init/user-data.yml.example) |
-| 3. Automated boot & node join | handled by `local.yml` via `ansible-pull` on first boot |
-| 4. Storage engine & alerting (Longhorn) | [`rpi-cluster-gitops/infrastructure/longhorn/`](rpi-cluster-gitops/infrastructure/longhorn/), [`.../monitoring/`](rpi-cluster-gitops/infrastructure/monitoring/) |
-| 5. GitOps bootstrap (Flux) | [`rpi-cluster-gitops/clusters/my-cluster/`](rpi-cluster-gitops/clusters/my-cluster/) |
-| 6. Application deployment | [`rpi-cluster-gitops/apps/`](rpi-cluster-gitops/apps/) |
+## Hardware
 
-## Before you touch hardware
+| Node | Model | RAM | Role | Storage |
+| --- | --- | --- | --- | --- |
+| `pi4` (192.168.0.174) | Raspberry Pi 4 | 2 GB | control plane | 220 GB USB SSD → `/mnt/fast-storage` |
+| `pi3-1` (192.168.0.104) | Raspberry Pi 3 | 1 GB | worker (Zigbee/Thread hardware) | SD card only |
+| `pi3-2` (192.168.0.176) | Raspberry Pi 3+ | 1 GB | worker (Bluetooth audio hardware) | SD card only |
 
-1. Read `rpi-cluster-ansible/README.md` — you need a reserved DHCP IP for the
-   Pi 4 and a dedicated cluster SSH keypair generated (and never committed)
-   before flashing any SD cards.
-2. Read `rpi-cluster-gitops/README.md` — after nodes join the cluster you must
-   label them (`node-role=control-plane|worker`) before Flux's app
-   Kustomization will schedule anything successfully.
+`pi4` is memory-tight for a control plane (Longhorn + k3s + Flux all
+competing for 2 GB) — expect occasional swap pressure under load; it settles
+on its own. Neither Pi 3 has a bulk-storage USB HDD attached currently.
 
-## Status
+## Repo layout
 
-`plan.md` has been reviewed (hardware/networking, K3s/Longhorn, and
-GitOps/security) and revised to fix the issues that review surfaced —
-insecure plain-HTTP token distribution, a possible cgroup-reboot loop, the
-missing `open-iscsi` prerequisite, RAM/SKU sizing, and the DHCP/static-IP
-conflict. `rpi-cluster-ansible/` and `rpi-cluster-gitops/` are scaffolded
-against the revised plan; both READMEs list the environment-specific values
-(IPs, keys, webhook credentials) still needed before a real first boot.
+```
+rpi-cluster-ansible/   local.yml - runs on every node's own boot via ansible-pull
+rpi-cluster-gitops/    Kubernetes manifests, synced by Flux
+  infrastructure/      Longhorn, monitoring
+  apps/                everything in "What's running" below
+```
+
+There's no central control host or shared inventory — each node pulls and
+applies `local.yml` against itself. Hardware-specific tasks (Bluetooth, USB
+device paths) are gated on `ansible_hostname`, not a generic role, since two
+nodes can share a role but not the same physical peripherals.
+
+## What's running
+
+| App | Where | Notes |
+| --- | --- | --- |
+| Home Assistant | `pi4` | |
+| Matter server, OTBR (Thread border router) | `pi3-1` | pinned to the node with the Bluetooth/Thread dongle |
+| Zigbee bridge (ser2net) | `pi3-1` | |
+| Multi-room audio casting | `pi3-2` + native services | see below |
+| NAS (Samba), web server | mixed | |
+
+### Multi-room audio casting
+
+A Bluetooth speaker ("The_Arms") gets audio from four sources — AirPlay,
+Spotify Connect, DLNA (VLC etc.), and PC system audio (Windows/Linux) — that
+auto-switch via a Snapcast "meta" stream: whichever source is actively
+playing wins, by priority order, no manual switching needed.
+
+```
+AirPlay (shairport-sync) ─┐
+Spotify (raspotify)       ├─→ snapserver meta stream ─→ snapclient ─→ bluealsa ─→ speaker
+DLNA (gmediarender)       │
+PC audio (your computer) ─┘
+```
+
+Runs natively on `pi3-2` (via Ansible), not as k8s pods — `bluealsa` needs to
+own its D-Bus name on the host's real system bus, which the host's D-Bus
+security policy correctly denies to a container process even running as
+root. Music Assistant was tried first and dropped: it pulled in a full
+media-library app and an ffmpeg-heavy DSP chain just to reach one speaker.
+
+**Casting from your phone/PC:**
+
+- **iPhone/Mac**: AirPlay, native.
+- **Spotify** (any platform, Premium required): pick "Big Speaker Sound In"
+  in the Spotify app's device picker.
+- **Android, or any DLNA-capable app (VLC, etc.)**: tap VLC's renderer icon,
+  or any app's DLNA "cast" button, select "The_Arms_DLNA". Needs the phone on
+  the same WiFi with multicast/AP-isolation not blocking discovery, and (on
+  Android 12+) VLC's local-network permission granted.
+- **PC audio** — see below.
+
+**Known limits:** total latency is ~0.5–1s (Snapcast enforces a 400ms
+minimum buffer for sync, plus the speaker's own SBC Bluetooth codec adds
+~100–250ms) — this is a deliberate tradeoff for automatic source-switching
+across all four inputs sharing one speaker connection. A direct low-latency
+path is possible but would lose that auto-switching and can conflict with
+the Snapcast-fed audio, since Bluetooth only allows one audio consumer at a
+time.
+
+#### PC audio setup
+
+Point your PC's system audio at `pi3-2`, port `4955` (Linux) or `4954`
+(Windows). Both are just another input to the same auto-switching meta
+stream — play something and it takes over automatically.
+
+**Linux** (works on both PulseAudio and PipeWire, via its compat layer):
+
+```bash
+sudo apt install pulseaudio-utils netcat-openbsd   # already present on most desktop distros
+
+# find your output device's monitor source once:
+pactl list sources short   # look for "...monitor" next to your default sink
+
+parec -d <your-sink>.monitor --channels=2 --rate=48000 --format=s16le --latency-msec=50 \
+  | nc 192.168.0.176 4955
+```
+
+For a persistent, selectable "Cast to Speaker" output device instead of a
+one-off command, create two systemd `--user` services:
+
+```ini
+# ~/.config/systemd/user/cast-to-speaker-sink.service
+[Unit]
+Description=Virtual "Cast to Speaker" audio output device
+After=pipewire-pulse.service
+Wants=pipewire-pulse.service
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+ExecStart=/usr/bin/pactl load-module module-null-sink sink_name=CastToSpeaker sink_properties=device.description=Cast-to-Speaker
+ExecStop=/bin/sh -c 'pactl list short modules | awk "\$2==\"module-null-sink\" && /CastToSpeaker/ {print \$1}" | xargs -r -n1 pactl unload-module'
+
+[Install]
+WantedBy=default.target
+```
+
+```ini
+# ~/.config/systemd/user/cast-to-speaker-stream.service
+[Unit]
+Description=Stream "Cast to Speaker" virtual sink to the Bluetooth speaker
+After=cast-to-speaker-sink.service
+Requires=cast-to-speaker-sink.service
+
+[Service]
+ExecStart=/bin/sh -c 'parec -d CastToSpeaker.monitor --channels=2 --rate=48000 --format=s16le --latency-msec=50 | nc 192.168.0.176 4955'
+Restart=always
+RestartSec=2
+
+[Install]
+WantedBy=default.target
+```
+
+```bash
+systemctl --user daemon-reload
+systemctl --user enable --now cast-to-speaker-sink cast-to-speaker-stream
+```
+
+"Cast-to-Speaker" now shows up as a normal selectable output device.
+
+**Windows** (needs a virtual audio cable, since Windows has no built-in
+loopback capture):
+
+1. Install [VB-Audio Virtual Cable](https://vb-audio.com/Cable/) (free).
+2. Set "CABLE Input" as your default playback device, or route specific
+   apps to it.
+3. Capture "CABLE Output" and stream it with `ffmpeg`:
+   ```
+   ffmpeg -f dshow -i audio="CABLE Output" -ar 48000 -ac 2 -f s16le tcp://192.168.0.176:4954
+   ```
+
+## Operating
+
+- **Node provisioning**: `ansible-pull` runs on every boot (systemd unit
+  installed by `local.yml` itself). To apply a change without waiting for a
+  reboot: `ssh <node> sudo systemctl start ansible-pull`.
+- **App deployment**: commit manifests under `rpi-cluster-gitops/apps/`,
+  push — Flux reconciles automatically.
+- **kubectl**: `export KUBECONFIG=kubeconfig-pi4.yaml` from this directory.
+
+## History
+
+The cluster was originally scoped in `plan.md` before any hardware was
+provisioned. Real deployment deviated in a few places (2 GB Pi 4 instead of
+the planned 8 GB; hardware-specific apps pinned by hostname instead of a
+generic `node-role` label, since role and physical peripherals aren't the
+same thing). `plan.md` is kept as a historical record of the original design
+rationale, not a live spec — this README reflects what's actually running.

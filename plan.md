@@ -1,3 +1,9 @@
+> **Historical design doc.** This was written before any hardware was
+> provisioned. The cluster is live now and deviated in places (2 GB Pi 4
+> instead of 8 GB, no bulk-storage HDDs attached, hardware-specific apps
+> pinned by hostname instead of role). See the top-level [`README.md`](README.md)
+> for what's actually running — kept here for the original rationale only.
+
 **System Architecture & Hardware Inventory**
 
 | Component | Quantity | Role | Configuration Notes |
