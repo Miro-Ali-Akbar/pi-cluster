@@ -12,9 +12,13 @@ bridging, and multi-room Bluetooth audio casting. Provisioned hands-off via
 | `pi3-1` (192.168.0.104) | Raspberry Pi 3 | 1 GB | worker (Zigbee/Thread hardware) | SD card only |
 | `pi3-2` (192.168.0.176) | Raspberry Pi 3+ | 1 GB | worker (Bluetooth audio hardware) | SD card only |
 
-`pi4` is memory-tight for a control plane (Longhorn + k3s + Flux all
-competing for 2 GB) — expect occasional swap pressure under load; it settles
-on its own. Neither Pi 3 has a bulk-storage USB HDD attached currently.
+`pi4` is memory-tight for a control plane (Longhorn + k3s + Flux + Home
+Assistant all competing for 2 GB) — it's chronically near its limit
+(typically ~1.5 GB used, several hundred MB swapped) and probe timeouts
+across Longhorn/Flux/CoreDNS during load spikes are expected, not a sign of
+something broken; it recovers on its own once load drops. If this gets
+worse, moving Home Assistant to a worker node is the next lever, not adding
+more to pi4. Neither Pi 3 has a bulk-storage USB HDD attached currently.
 
 ## Repo layout
 
@@ -71,13 +75,25 @@ media-library app and an ffmpeg-heavy DSP chain just to reach one speaker.
   Android 12+) VLC's local-network permission granted.
 - **PC audio** — see below.
 
+**Direct phone pairing instead of casting:** the Bluetooth speaker can only
+hold one connection at a time, so casting via `pi3-2` and pairing a phone
+directly to it are mutually exclusive. A Home Assistant switch,
+**"Speaker Cast Stack"**, toggles the whole cast stack off (frees the
+speaker to pair directly) and back on. It works via a root-only,
+forced-command-restricted SSH key on `pi3-2` — see the `ha-cast-toggle`
+tasks near the end of `rpi-cluster-ansible/local.yml`. The private key is
+never committed; it's a k8s Secret created out-of-band, same as the
+cluster's own join-token key.
+
 **Known limits:** total latency is ~0.5–1s (Snapcast enforces a 400ms
 minimum buffer for sync, plus the speaker's own SBC Bluetooth codec adds
 ~100–250ms) — this is a deliberate tradeoff for automatic source-switching
 across all four inputs sharing one speaker connection. A direct low-latency
 path is possible but would lose that auto-switching and can conflict with
 the Snapcast-fed audio, since Bluetooth only allows one audio consumer at a
-time.
+time. Also, `snapclient` doesn't always notice on its own when `snapserver`
+restarts (stale TCP connection) — a watchdog timer checks every 2 minutes
+and restarts it if it's not actually registered.
 
 #### PC audio setup
 
@@ -159,4 +175,8 @@ loopback capture):
 - **App deployment**: commit manifests under `rpi-cluster-gitops/apps/`,
   push — Flux reconciles automatically.
 - **kubectl**: `export KUBECONFIG=kubeconfig-pi4.yaml` from this directory.
+- **Secrets** (never committed - created out-of-band, once): the
+  `ha-cast-toggle-key` k8s Secret in the `home-assistant` namespace, and the
+  matching `ha_cast_toggle_pubkey` var in `local.yml` if the key ever needs
+  rotating. Same pattern as the cluster's own join-token key.
 
