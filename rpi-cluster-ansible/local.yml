@@ -97,14 +97,44 @@
     - name: Control-plane role tasks
       when: node_role == 'control-plane'
       block:
+        # Match by stable /dev/disk/by-id/*-0:0 path, NOT /dev/sdX - generic
+        # SCSI device names aren't reserved for physical drives and can
+        # collide with a Longhorn iSCSI-attached volume enumerated on the
+        # same node (observed happening on a worker node's /dev/sda; only
+        # avoided here so far because the real SSD happens to attach before
+        # Longhorn's volume does - not a guarantee). The SSD is behind a USB
+        # enclosure, so it has both a usb-* and an ata-* by-id entry;
+        # matching the ata-* one is more specific (a bare "ata-" prefix
+        # can't collide with a virtual SCSI/iSCSI LUN, whereas relying on
+        # enumeration order can).
+        - name: Find the SSD (stable by-id path)
+          ansible.builtin.shell: |
+            set -o pipefail
+            ls -1 /dev/disk/by-id/ata-* 2>/dev/null | grep -v -- '-part' | head -1
+          args:
+            executable: /bin/bash
+          register: ssd_byid
+          changed_when: false
+          failed_when: false
+
+        - name: Fail loudly if the SSD isn't present (control plane requires it)
+          ansible.builtin.assert:
+            that: ssd_byid.stdout | trim | length > 0
+            fail_msg: "No /dev/disk/by-id/ata-* device found - is the SSD plugged in?"
+
+        - name: Set SSD facts
+          ansible.builtin.set_fact:
+            ssd_device: "{{ ssd_byid.stdout | trim }}"
+            ssd_partition_path: "{{ ssd_byid.stdout | trim }}-part1"
+
         - name: Check for an existing partition on the SSD
           ansible.builtin.stat:
-            path: /dev/sda1
+            path: "{{ ssd_partition_path }}"
           register: ssd_partition
 
         - name: Partition the SSD (whole-disk, ext4) if none exists yet
           community.general.parted:
-            device: /dev/sda
+            device: "{{ ssd_device }}"
             number: 1
             state: present
             fs_type: ext4
@@ -113,7 +143,7 @@
         - name: Format freshly-partitioned SSD as ext4 (wipe any stale signature)
           community.general.filesystem:
             fstype: ext4
-            dev: /dev/sda1
+            dev: "{{ ssd_partition_path }}"
             # Repurposing external drives for cluster storage - a prior
             # filesystem signature (e.g. leftover NTFS) is expected on first
             # use. Only force here, on a partition we just created - never on
@@ -126,7 +156,7 @@
         - name: Ensure SSD stays ext4 (idempotent, no force)
           community.general.filesystem:
             fstype: ext4
-            dev: /dev/sda1
+            dev: "{{ ssd_partition_path }}"
           when: ssd_partition.stat.exists
           register: ssd_format_existing
 
@@ -139,7 +169,7 @@
         - name: Mount SSD at fast-storage
           ansible.posix.mount:
             path: "{{ fast_storage_mount }}"
-            src: /dev/sda1
+            src: "{{ ssd_partition_path }}"
             fstype: ext4
             state: mounted
 
@@ -190,24 +220,45 @@
     - name: Worker role tasks
       when: node_role == 'worker'
       block:
-        - name: Check whether a USB HDD is attached
-          ansible.builtin.stat:
-            path: /dev/sda
-          register: hdd_present
+        # Match by stable /dev/disk/by-id/usb-* path, NOT /dev/sdX - generic
+        # SCSI device names aren't reserved for physical drives, and have
+        # been observed colliding with Longhorn's iSCSI-attached volume for
+        # a pod's PVC (also enumerated as /dev/sda on the same node). That
+        # collision once caused this block to attempt `parted --mklabel` on
+        # a live, mounted Longhorn volume - it only failed to write because
+        # the kernel refused ("Partition(s) on /dev/sda are being used"),
+        # not because anything here detected the mismatch. by-id paths are
+        # only created for genuine USB-attached disks, so this can't
+        # mistake a virtual/iSCSI LUN for the physical bulk-storage drive.
+        - name: Find the physical USB HDD, if attached (stable by-id path)
+          ansible.builtin.shell: |
+            set -o pipefail
+            ls -1 /dev/disk/by-id/usb-* 2>/dev/null | grep -v -- '-part' | head -1
+          args:
+            executable: /bin/bash
+          register: usb_hdd_byid
+          changed_when: false
+          failed_when: false
+
+        - name: Set USB HDD facts
+          ansible.builtin.set_fact:
+            usb_hdd_present: "{{ usb_hdd_byid.stdout | trim | length > 0 }}"
+            usb_hdd_device: "{{ usb_hdd_byid.stdout | trim }}"
+            usb_hdd_partition: "{{ usb_hdd_byid.stdout | trim }}-part1"
 
         # Bulk storage is optional at join time - a worker can join the
         # cluster now and have a drive added later without re-running setup.
         - name: USB HDD storage tasks
-          when: hdd_present.stat.exists
+          when: usb_hdd_present
           block:
             - name: Check for an existing partition on the USB HDD
               ansible.builtin.stat:
-                path: /dev/sda1
+                path: "{{ usb_hdd_partition }}"
               register: hdd_partition
 
             - name: Partition the USB HDD (whole-disk, ext4) if none exists yet
               community.general.parted:
-                device: /dev/sda
+                device: "{{ usb_hdd_device }}"
                 number: 1
                 state: present
                 fs_type: ext4
@@ -216,7 +267,7 @@
             - name: Format freshly-partitioned USB HDD as ext4 (wipe any stale signature)
               community.general.filesystem:
                 fstype: ext4
-                dev: /dev/sda1
+                dev: "{{ usb_hdd_partition }}"
                 # Only force on a partition we just created - never on later
                 # idempotent re-runs, where the drive is likely mounted.
                 force: true
@@ -226,7 +277,7 @@
             - name: Ensure USB HDD stays ext4 (idempotent, no force)
               community.general.filesystem:
                 fstype: ext4
-                dev: /dev/sda1
+                dev: "{{ usb_hdd_partition }}"
               when: hdd_partition.stat.exists
               register: hdd_format_existing
 
@@ -239,7 +290,7 @@
             - name: Mount USB HDD at bulk-storage
               ansible.posix.mount:
                 path: "{{ bulk_storage_mount }}"
-                src: /dev/sda1
+                src: "{{ usb_hdd_partition }}"
                 fstype: ext4
                 state: mounted
 
