@@ -1,0 +1,12 @@
+[Unit]
+Description=Stream "Cast to Speaker" virtual sink to the Bluetooth speaker
+After=cast-to-speaker-sink.service
+Requires=cast-to-speaker-sink.service
+
+[Service]
+ExecStart=/bin/sh -c 'parec -d CastToSpeaker.monitor --channels=2 --rate=48000 --format=s16le --latency-msec=50 | nc 192.168.0.176 4955'
+Restart=always
+RestartSec=2
+
+[Install]
+WantedBy=default.target

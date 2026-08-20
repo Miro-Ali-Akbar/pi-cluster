@@ -1,0 +1,13 @@
+[Unit]
+Description=Virtual "Cast to Speaker" audio output device
+After=pipewire-pulse.service
+Wants=pipewire-pulse.service
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+ExecStart=/usr/bin/pactl load-module module-null-sink sink_name=CastToSpeaker sink_properties=device.description=Cast-to-Speaker
+ExecStop=/bin/sh -c 'pactl list short modules | awk "\$2==\"module-null-sink\" && /CastToSpeaker/ {print \$1}" | xargs -r -n1 pactl unload-module'
+
+[Install]
+WantedBy=default.target
