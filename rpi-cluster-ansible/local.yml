@@ -586,9 +586,19 @@
                   bluetoothctl disconnect "$SPEAKER_MAC" || true
                   ;;
                 cast-stack-start)
-                  # dependency order: reverse of the stop order above
-                  systemctl start snapserver shairport-sync raspotify gmediarender bluealsa snapclient
+                  # dependency order: reverse of the stop order above. Each
+                  # sleep matters - bluealsa needs a moment to finish
+                  # registering its A2DP endpoints with bluetoothd before a
+                  # connect can negotiate a media transport, and snapclient
+                  # needs that transport (the bluealsa PCM) to already exist
+                  # or it fails immediately with "PCM not found" and burns
+                  # through its whole restart-burst limit before bluealsa
+                  # ever catches up.
+                  systemctl start snapserver shairport-sync raspotify gmediarender bluealsa
+                  sleep 2
                   bluetoothctl connect "$SPEAKER_MAC" || true
+                  sleep 2
+                  systemctl start snapclient
                   ;;
                 cast-stack-status)
                   systemctl is-active snapclient
