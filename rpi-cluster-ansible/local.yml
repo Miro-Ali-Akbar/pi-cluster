@@ -263,3 +263,45 @@
             K3S_TOKEN={{ worker_node_token.stdout | trim }}
             sh -s - agent
           when: not k3s_agent_installed.stat.exists
+
+    # --- pi3-2: onboard Bluetooth audio-out (paired dumb BT speakers) ---
+    # Runs natively on the host, not as a k8s pod - bluealsa needs to own
+    # the "org.bluealsa" name on the host's real system D-Bus, and the
+    # host's default D-Bus security policy denies that to a container
+    # process even running as root (confirmed by testing directly - it's
+    # not a bug, it's the policy working as intended). A pod would need a
+    # policy file dropped into /etc/dbus-1/system.d/ on the host anyway, at
+    # which point there's no benefit over just installing the real package.
+    - name: Bluetooth audio (bluealsa) tasks
+      when: ansible_hostname == 'pi3-2'
+      block:
+        - name: Install bluez-alsa-utils
+          ansible.builtin.apt:
+            name: bluez-alsa-utils
+            state: present
+            update_cache: true
+
+        - name: Install bluealsa systemd unit (A2DP source - streams audio out to paired speakers)
+          ansible.builtin.copy:
+            dest: /etc/systemd/system/bluealsa.service
+            mode: "0644"
+            content: |
+              [Unit]
+              Description=BlueALSA (A2DP source for streaming to paired Bluetooth speakers)
+              After=bluetooth.service dbus.service
+              Requires=bluetooth.service
+
+              [Service]
+              ExecStart=/usr/bin/bluealsa -p a2dp-source
+              Restart=on-failure
+
+              [Install]
+              WantedBy=multi-user.target
+          register: bluealsa_unit
+
+        - name: Enable and start bluealsa
+          ansible.builtin.systemd:
+            name: bluealsa
+            enabled: true
+            state: started
+            daemon_reload: "{{ bluealsa_unit.changed }}"

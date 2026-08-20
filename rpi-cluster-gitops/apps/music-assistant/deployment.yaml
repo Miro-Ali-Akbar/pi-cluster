@@ -1,0 +1,46 @@
+# Music Assistant Server - the multi-room audio engine (Sonos-style
+# grouping/casting) that Home Assistant's Music Assistant integration talks
+# to. hostNetwork because its input providers (AirPlay, DLNA, Chromecast
+# discovery) rely on mDNS/multicast, same reasoning as matter-server/otbr.
+# No Bluetooth/dbus mount yet - this stage is server + phone/computer
+# casting only. Pinned to pi3-2 to keep it near the future Bluetooth
+# dongles for the dumb-speaker outputs (bluealsa/Snapcast), added later.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: music-assistant
+  namespace: music-assistant
+spec:
+  replicas: 1
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      app: music-assistant
+  template:
+    metadata:
+      labels:
+        app: music-assistant
+    spec:
+      nodeSelector:
+        kubernetes.io/hostname: pi3-2
+      hostNetwork: true
+      dnsPolicy: ClusterFirstWithHostNet
+      containers:
+        - name: music-assistant
+          image: ghcr.io/music-assistant/server:stable
+          resources:
+            requests:
+              cpu: 500m
+              memory: 256Mi
+            limits:
+              cpu: "2"
+              memory: 1Gi
+          volumeMounts:
+            - name: data
+              mountPath: /data
+      volumes:
+        - name: data
+          hostPath:
+            path: /var/lib/music-assistant/data
+            type: DirectoryOrCreate
