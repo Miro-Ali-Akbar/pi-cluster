@@ -160,11 +160,3 @@ loopback capture):
   push — Flux reconciles automatically.
 - **kubectl**: `export KUBECONFIG=kubeconfig-pi4.yaml` from this directory.
 
-## History
-
-The cluster was originally scoped in `plan.md` before any hardware was
-provisioned. Real deployment deviated in a few places (2 GB Pi 4 instead of
-the planned 8 GB; hardware-specific apps pinned by hostname instead of a
-generic `node-role` label, since role and physical peripherals aren't the
-same thing). `plan.md` is kept as a historical record of the original design
-rationale, not a live spec — this README reflects what's actually running.
