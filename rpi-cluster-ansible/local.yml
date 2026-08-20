@@ -356,3 +356,40 @@
             enabled: true
             state: started
             daemon_reload: "{{ bluealsa_unit.changed }}"
+
+        - name: Install snapclient
+          ansible.builtin.apt:
+            name: snapclient
+            state: present
+            update_cache: true
+
+        # Music Assistant's built-in Snapserver runs on the same node
+        # (pi3-2, hostNetwork) - connect over localhost. Output goes through
+        # bluealsa's ALSA plugin to the paired speaker "The_Arms"
+        # (93:30:5A:9B:22:F9), not a real ALSA hardware device.
+        - name: Create snapclient systemd drop-in directory
+          ansible.builtin.file:
+            path: /etc/systemd/system/snapclient.service.d
+            state: directory
+            mode: "0755"
+
+        - name: Install snapclient systemd unit override (point at MA's snapserver + bluealsa output)
+          ansible.builtin.copy:
+            dest: /etc/systemd/system/snapclient.service.d/override.conf
+            mode: "0644"
+            content: |
+              [Unit]
+              After=bluealsa.service
+              Requires=bluealsa.service
+
+              [Service]
+              ExecStart=
+              ExecStart=/usr/bin/snapclient -h 127.0.0.1 -o alsa -d "bluealsa:DEV=93:30:5A:9B:22:F9,PROFILE=a2dp"
+          register: snapclient_unit
+
+        - name: Enable and start snapclient
+          ansible.builtin.systemd:
+            name: snapclient
+            enabled: true
+            state: restarted
+            daemon_reload: "{{ snapclient_unit.changed }}"
