@@ -397,3 +397,157 @@
             enabled: true
             state: restarted
             daemon_reload: "{{ snapclient_unit.changed }}"
+
+    # --- pi3-2: lightweight cast sources feeding the speaker above ---
+    # Snapserver + three small purpose-built receivers (no Music Assistant -
+    # that pulled in a full media-library/streaming-provider app and an
+    # ffmpeg-heavy DSP chain just to reach one Bluetooth speaker). Each
+    # receiver writes raw PCM into its own pipe in /run/castpipes; a
+    # snapserver "meta" stream auto-plays whichever pipe currently has audio
+    # (priority = listed order), so casting from any source just works
+    # without manually switching. The group's stream/name assignment lives
+    # in snapserver's own state (/var/lib/snapserver/server.json), not here.
+    - name: Cast sources (snapserver, AirPlay, Spotify Connect, DLNA) tasks
+      when: ansible_hostname == 'pi3-2'
+      block:
+        - name: Install snapserver, shairport-sync (AirPlay), gmediarender (DLNA)
+          ansible.builtin.apt:
+            name:
+              - snapserver
+              - shairport-sync
+              - gmediarender
+            state: present
+            update_cache: true
+
+        - name: Create shared pipe directory at boot (tmpfs, cleared on reboot)
+          ansible.builtin.copy:
+            dest: /etc/tmpfiles.d/castpipes.conf
+            mode: "0644"
+            content: "d /run/castpipes 0777 root root -\n"
+          register: castpipes_tmpfile
+
+        - name: Apply tmpfiles.d now (so it exists without a reboot)
+          ansible.builtin.command: systemd-tmpfiles --create /etc/tmpfiles.d/castpipes.conf
+          when: castpipes_tmpfile.changed
+
+        - name: Configure snapserver's stream sources
+          ansible.builtin.copy:
+            dest: /etc/snapserver.conf
+            mode: "0644"
+            content: |
+              [server]
+              [ssl]
+              [http]
+              doc_root = /usr/share/snapserver/snapweb
+              [tcp]
+              [stream]
+              source = pipe:///run/castpipes/airplay?name=AirPlay&mode=create&codec=null
+              source = pipe:///run/castpipes/spotify?name=Spotify&mode=create&codec=null
+              source = pipe:///run/castpipes/dlna?name=DLNA&mode=create&codec=null
+              source = tcp://0.0.0.0:4954?name=PC-Windows&codec=null
+              source = tcp://0.0.0.0:4955?name=PC-Linux&codec=null
+              source = meta:///Spotify/AirPlay/DLNA/PC-Windows/PC-Linux?name=BigSpeakerCast
+              [streaming_client]
+              [logging]
+          register: snapserver_conf
+
+        - name: Enable and start snapserver
+          ansible.builtin.systemd:
+            name: snapserver
+            enabled: true
+            state: "{{ 'restarted' if snapserver_conf.changed else 'started' }}"
+
+        - name: Point shairport-sync's audio output at its AirPlay pipe
+          ansible.builtin.lineinfile:
+            path: /etc/shairport-sync.conf
+            regexp: '^(//\s*)?output_backend\s*=\s*"(alsa|pipe)";.*$'
+            line: '	output_backend = "pipe";'
+          register: shairport_backend
+
+        - name: Set shairport-sync's pipe path
+          ansible.builtin.lineinfile:
+            path: /etc/shairport-sync.conf
+            regexp: '^(//\s*)?name\s*=\s*"(/tmp/shairport-sync-audio|/run/castpipes/airplay)";.*$'
+            line: '	name = "/run/castpipes/airplay";'
+          register: shairport_pipe
+
+        - name: Enable and restart shairport-sync
+          ansible.builtin.systemd:
+            name: shairport-sync
+            enabled: true
+            state: "{{ 'restarted' if (shairport_backend.changed or shairport_pipe.changed) else 'started' }}"
+
+        - name: Add raspotify's signed apt key
+          ansible.builtin.get_url:
+            url: https://dtcooper.github.io/raspotify/key.asc
+            dest: /usr/share/keyrings/raspotify_key.asc
+            mode: "0644"
+
+        - name: Add raspotify's apt repository
+          ansible.builtin.copy:
+            dest: /etc/apt/sources.list.d/raspotify.list
+            mode: "0644"
+            content: "deb [signed-by=/usr/share/keyrings/raspotify_key.asc] https://dtcooper.github.io/raspotify raspotify main\n"
+          register: raspotify_repo
+
+        - name: Install raspotify (Spotify Connect, via librespot)
+          ansible.builtin.apt:
+            name: raspotify
+            state: present
+            update_cache: "{{ raspotify_repo.changed }}"
+
+        - name: Point raspotify's output at its Spotify pipe, name the device
+          ansible.builtin.lineinfile:
+            path: /etc/raspotify/conf
+            regexp: "{{ item.regexp }}"
+            line: "{{ item.line }}"
+          loop:
+            - regexp: '^#?LIBRESPOT_BACKEND=(pipe)?$'
+              line: "LIBRESPOT_BACKEND=pipe"
+            - regexp: '^#?LIBRESPOT_DEVICE=(/run/castpipes/spotify)?$'
+              line: "LIBRESPOT_DEVICE=/run/castpipes/spotify"
+            - regexp: '^#?LIBRESPOT_NAME=("Librespot"|"Big Speaker Sound In")$'
+              line: 'LIBRESPOT_NAME="Big Speaker Sound In"'
+          register: raspotify_conf
+
+        - name: Allow raspotify to write outside its default sandboxed paths (needs the shared pipe dir)
+          ansible.builtin.copy:
+            dest: /etc/systemd/system/raspotify.service.d/override.conf
+            mode: "0644"
+            content: |
+              [Service]
+              ReadWritePaths=/run/castpipes
+          register: raspotify_override
+
+        - name: Enable and restart raspotify
+          ansible.builtin.systemd:
+            name: raspotify
+            enabled: true
+            state: "{{ 'restarted' if (raspotify_conf.changed or raspotify_override.changed) else 'started' }}"
+            daemon_reload: "{{ raspotify_override.changed }}"
+
+        - name: Install gmediarender systemd unit (DLNA renderer -> its own pipe; package ships no unit)
+          ansible.builtin.copy:
+            dest: /etc/systemd/system/gmediarender.service
+            mode: "0644"
+            content: |
+              [Unit]
+              Description=gmediarender (DLNA renderer -> Snapcast pipe)
+              After=network-online.target avahi-daemon.service
+              Wants=network-online.target
+
+              [Service]
+              User=nobody
+              ExecStart=/usr/bin/gmediarender -f "The_Arms_DLNA" --gstout-audiopipe="audioconvert ! audioresample ! audio/x-raw,format=S16LE,rate=48000,channels=2 ! filesink location=/run/castpipes/dlna"
+              Restart=on-failure
+
+              [Install]
+              WantedBy=multi-user.target
+          register: gmediarender_unit
+
+        - name: Enable and start gmediarender
+          ansible.builtin.systemd:
+            name: gmediarender
+            enabled: true
+            state: "{{ 'restarted' if gmediarender_unit.changed else 'started' }}"
+            daemon_reload: "{{ gmediarender_unit.changed }}"
