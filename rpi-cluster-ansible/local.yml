@@ -457,18 +457,26 @@
             enabled: true
             state: "{{ 'restarted' if snapserver_conf.changed else 'started' }}"
 
+        # These regexps intentionally match ONLY the package's exact pristine
+        # commented-out default line (unique text, including its trailing
+        # comment) - never the already-active line this task produces. That
+        # makes the replace self-consuming: it fires once, then the pristine
+        # text is gone and it's a permanent no-op. A broader regexp matching
+        # both the default AND already-active forms once uncommented BOTH on
+        # a real run here, producing two active `output_backend` lines and a
+        # fatal "duplicate setting name" error from shairport-sync.
         - name: Point shairport-sync's audio output at its AirPlay pipe
-          ansible.builtin.lineinfile:
+          ansible.builtin.replace:
             path: /etc/shairport-sync.conf
-            regexp: '^(//\s*)?output_backend\s*=\s*"(alsa|pipe)";.*$'
-            line: '	output_backend = "pipe";'
+            regexp: '^//\s*output_backend = "alsa";.*$'
+            replace: '	output_backend = "pipe";'
           register: shairport_backend
 
         - name: Set shairport-sync's pipe path
-          ansible.builtin.lineinfile:
+          ansible.builtin.replace:
             path: /etc/shairport-sync.conf
-            regexp: '^(//\s*)?name\s*=\s*"(/tmp/shairport-sync-audio|/run/castpipes/airplay)";.*$'
-            line: '	name = "/run/castpipes/airplay";'
+            regexp: '^//\s*name = "/tmp/shairport-sync-audio";.*$'
+            replace: '	name = "/run/castpipes/airplay";'
           register: shairport_pipe
 
         - name: Enable and restart shairport-sync
