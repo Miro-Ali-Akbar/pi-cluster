@@ -448,7 +448,11 @@
               [tcp]
               [stream]
               source = pipe:///run/castpipes/airplay?name=AirPlay&mode=create&codec=null
-              source = pipe:///run/castpipes/spotify?name=Spotify&mode=create&codec=null
+              # Spotify's decoded audio is natively 44.1kHz, unlike every
+              # other source here (48kHz) - without declaring the pipe's
+              # real rate, snapserver assumes the global 48kHz default and
+              # plays it back ~8.8% too fast (48000/44100), audibly sped up.
+              source = pipe:///run/castpipes/spotify?name=Spotify&mode=create&codec=null&sampleformat=44100:16:2
               source = pipe:///run/castpipes/dlna?name=DLNA&mode=create&codec=null
               source = tcp://0.0.0.0:4954?name=PC-Windows&codec=null
               source = tcp://0.0.0.0:4955?name=PC-Linux&codec=null
