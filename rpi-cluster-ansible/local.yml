@@ -11,10 +11,16 @@
     fast_storage_mount: /mnt/fast-storage
     bulk_storage_mount: /mnt/bulk-storage
     k3s_server_port: 6443
-    # Fill in with the Pi 4's reserved DHCP IP (see plan.md step 2's MAC-to-IP table)
-    # before flashing the SD cards, or override with --extra-vars on ansible-pull.
+    # Fill in with the Pi 4's reserved DHCP IP before flashing the SD cards,
+    # or override with --extra-vars on ansible-pull.
     pi4_local_ip: "REPLACE_WITH_PI4_IP"
     cluster_ssh_key: /etc/rpi-cluster/id_ed25519
+    # Public half of the dedicated key Home Assistant's cast-stack toggle
+    # switch uses to reach pi3-2 - restricted via forced command below to
+    # exactly this one action, nothing else. Never the cluster_ssh_key above
+    # (that one can pull node-join tokens - a compromised HA instance
+    # shouldn't inherit that).
+    ha_cast_toggle_pubkey: "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIJBvgele3xI9YIhLH8+hn+xjjENvygMN0MIxNxXHPAnS ha-cast-toggle"
     # RAM-based auto-detection is just a default - real hardware doesn't always
     # match the plan's assumed SKUs (e.g. a 2GB Pi 4 doing control-plane duty).
     # Override explicitly with --extra-vars "node_role=control-plane|worker".
@@ -559,3 +565,42 @@
             enabled: true
             state: "{{ 'restarted' if gmediarender_unit.changed else 'started' }}"
             daemon_reload: "{{ gmediarender_unit.changed }}"
+
+        # Lets a Home Assistant switch free the speaker for direct phone
+        # pairing: stopping the cast stack alone isn't enough, since BlueZ
+        # keeps the ACL connection up independent of bluealsa/snapclient -
+        # the speaker stays unavailable to any other device until it's
+        # explicitly disconnected too.
+        - name: Install the cast-stack toggle script (root-only, forced-command restricted)
+          ansible.builtin.copy:
+            dest: /usr/local/bin/ha-cast-toggle.sh
+            mode: "0700"
+            content: |
+              #!/bin/bash
+              set -euo pipefail
+              SPEAKER_MAC="93:30:5A:9B:22:F9"
+              SERVICES="snapclient bluealsa gmediarender raspotify shairport-sync snapserver"
+              case "${SSH_ORIGINAL_COMMAND:-}" in
+                cast-stack-stop)
+                  systemctl stop $SERVICES
+                  bluetoothctl disconnect "$SPEAKER_MAC" || true
+                  ;;
+                cast-stack-start)
+                  # dependency order: reverse of the stop order above
+                  systemctl start snapserver shairport-sync raspotify gmediarender bluealsa snapclient
+                  bluetoothctl connect "$SPEAKER_MAC" || true
+                  ;;
+                cast-stack-status)
+                  systemctl is-active snapclient
+                  ;;
+                *)
+                  echo "unrecognized command" >&2
+                  exit 1
+                  ;;
+              esac
+
+        - name: Authorize Home Assistant's cast-toggle key (root, forced command only)
+          ansible.posix.authorized_key:
+            user: root
+            key: "{{ ha_cast_toggle_pubkey }}"
+            key_options: 'command="/usr/local/bin/ha-cast-toggle.sh",no-port-forwarding,no-agent-forwarding,no-X11-forwarding,no-pty'

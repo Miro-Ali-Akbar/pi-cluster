@@ -54,6 +54,14 @@ spec:
             - name: letsencrypt
               mountPath: /etc/letsencrypt
               readOnly: true
+            # SSH key for the cast-stack toggle switch (shell_command ->
+            # pi3-2, restricted there to one forced command - see
+            # rpi-cluster-ansible/local.yml). The key itself is never
+            # committed; the Secret is created out-of-band, same as the
+            # cluster's own join-token key.
+            - name: cast-toggle-key
+              mountPath: /config/.ssh
+              readOnly: true
       volumes:
         - name: config
           persistentVolumeClaim:
@@ -70,3 +78,7 @@ spec:
           hostPath:
             path: /etc/letsencrypt
             type: Directory
+        - name: cast-toggle-key
+          secret:
+            secretName: ha-cast-toggle-key
+            defaultMode: 0600
