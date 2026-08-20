@@ -383,6 +383,10 @@
               Requires=bluealsa.service
 
               [Service]
+              # The packaged unit doesn't declare this, and snapclient
+              # hardcodes /var/run/snapclient/pid for its daemonizing pid
+              # lock - without it, startup fails immediately.
+              RuntimeDirectory=snapclient
               ExecStart=
               ExecStart=/usr/bin/snapclient -h 127.0.0.1 -o alsa -d "bluealsa:DEV=93:30:5A:9B:22:F9,PROFILE=a2dp"
           register: snapclient_unit
