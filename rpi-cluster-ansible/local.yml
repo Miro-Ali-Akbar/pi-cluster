@@ -404,6 +404,69 @@
             state: restarted
             daemon_reload: "{{ snapclient_unit.changed }}"
 
+        # snapclient doesn't reliably notice a dead TCP connection on its
+        # own after snapserver restarts (observed twice: the socket looked
+        # ESTABLISHED at the OS level with no data flowing to reveal it was
+        # actually talking to a closed server process, so it never
+        # reconnected until manually restarted). Poll snapserver's own
+        # view of connected clients instead of trusting the socket state.
+        - name: Install the snapclient reconnect watchdog script
+          ansible.builtin.copy:
+            dest: /usr/local/bin/snapclient-watchdog.sh
+            mode: "0755"
+            content: |
+              #!/bin/bash
+              status=$(curl -s --max-time 3 -X POST http://127.0.0.1:1780/jsonrpc \
+                -H "Content-Type: application/json" \
+                -d '{"id":1,"jsonrpc":"2.0","method":"Server.GetStatus"}')
+              groups=$(echo "$status" | python3 -c "
+              import json, sys
+              try:
+                  print(len(json.load(sys.stdin)['result']['server']['groups']))
+              except Exception:
+                  print(0)
+              ")
+              if [ "$groups" = "0" ]; then
+                  systemctl restart snapclient
+              fi
+          register: snapclient_watchdog_script
+
+        - name: Install the snapclient reconnect watchdog timer
+          ansible.builtin.copy:
+            dest: "/etc/systemd/system/snapclient-watchdog.{{ item }}"
+            mode: "0644"
+            content: "{{ snapclient_watchdog_units[item] }}"
+          loop:
+            - service
+            - timer
+          vars:
+            snapclient_watchdog_units:
+              service: |
+                [Unit]
+                Description=Restart snapclient if it's not actually connected to snapserver
+
+                [Service]
+                Type=oneshot
+                ExecStart=/usr/local/bin/snapclient-watchdog.sh
+              timer: |
+                [Unit]
+                Description=Periodically check snapclient is actually connected
+
+                [Timer]
+                OnUnitActiveSec=2min
+                OnBootSec=2min
+
+                [Install]
+                WantedBy=timers.target
+          register: snapclient_watchdog_units_installed
+
+        - name: Enable and start the snapclient reconnect watchdog timer
+          ansible.builtin.systemd:
+            name: snapclient-watchdog.timer
+            enabled: true
+            state: started
+            daemon_reload: "{{ snapclient_watchdog_units_installed.changed }}"
+
     # --- pi3-2: lightweight cast sources feeding the speaker above ---
     # Snapserver + three small purpose-built receivers (no Music Assistant -
     # that pulled in a full media-library/streaming-provider app and an
