@@ -354,54 +354,6 @@
             enabled: true
             daemon_reload: "{{ boot_notify_unit.changed }}"
 
-    # --- pi3-2: persistent journal ---
-    # Raspberry Pi OS ships a vendor drop-in
-    # (/usr/lib/systemd/journald.conf.d/40-rpi-volatile-storage.conf)
-    # forcing Storage=volatile specifically to reduce SD card wear -
-    # creating /var/log/journal alone doesn't override it, since that
-    # drop-in wins regardless. Overriding it anyway: a reboot (including
-    # bluetooth-watchdog's own) otherwise wipes the evidence of what
-    # caused it, which defeats the point of having the watchdog log
-    # anything. Trade-off accepted: somewhat more SD card writes.
-    - name: Persistent journal (survive reboots - needed to debug the Bluetooth watchdog)
-      when: ansible_hostname == 'pi3-2'
-      block:
-        - name: Remove the wrongly-sorted first attempt at this override
-          ansible.builtin.file:
-            path: /etc/systemd/journald.conf.d/00-persistent-storage.conf
-            state: absent
-
-        - name: Create /var/log/journal
-          ansible.builtin.file:
-            path: /var/log/journal
-            state: directory
-            mode: "0755"
-
-        - name: Create journald config drop-in directory
-          ansible.builtin.file:
-            path: /etc/systemd/journald.conf.d
-            state: directory
-            mode: "0755"
-
-        # Drop-ins from /etc/ and /usr/lib/ merge into ONE filename-sorted
-        # list, later files winning per-key - "00-" sorted before the
-        # vendor's "40-rpi-volatile-storage.conf" and lost. Must sort after
-        # it to actually win.
-        - name: Override the vendor's volatile-storage default
-          ansible.builtin.copy:
-            dest: /etc/systemd/journald.conf.d/99-persistent-storage.conf
-            mode: "0644"
-            content: |
-              [Journal]
-              Storage=persistent
-          register: journald_override
-
-        - name: Restart systemd-journald to switch to persistent storage
-          ansible.builtin.systemd:
-            name: systemd-journald
-            state: restarted
-          when: journald_override.changed
-
     # --- pi3-2: remove the old multi-source cast stack ---
     # snapclient/snapserver/shairport-sync/gmediarender, and their
     # associated config/watchdog files, from when this ran AirPlay+DLNA+PC
