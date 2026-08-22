@@ -321,6 +321,39 @@
             sh -s - agent
           when: not k3s_agent_installed.stat.exists
 
+    # --- pi3-2: notify Home Assistant on every boot ---
+    # Mainly to know when bluetooth-watchdog's auto-reboot actually fires,
+    # without having to notice the speaker went quiet. Uses a webhook
+    # (no auth token to manage) into an HA automation
+    # (pi3_2_boot_notify in automations.yaml) that posts a
+    # persistent_notification.
+    - name: Notify Home Assistant when pi3-2 boots
+      when: ansible_hostname == 'pi3-2'
+      block:
+        - name: Install the boot-notify systemd unit
+          ansible.builtin.copy:
+            dest: /etc/systemd/system/boot-notify.service
+            mode: "0644"
+            content: |
+              [Unit]
+              Description=Notify Home Assistant that this node booted
+              After=network-online.target
+              Wants=network-online.target
+
+              [Service]
+              Type=oneshot
+              ExecStart=/usr/bin/curl -s -X POST --max-time 10 http://192.168.0.174:8123/api/webhook/efd1794d752b7432f3fc69042eb20fdf
+
+              [Install]
+              WantedBy=multi-user.target
+          register: boot_notify_unit
+
+        - name: Enable boot-notify
+          ansible.builtin.systemd:
+            name: boot-notify
+            enabled: true
+            daemon_reload: "{{ boot_notify_unit.changed }}"
+
     # --- pi3-2: persistent journal ---
     # Raspberry Pi OS ships a vendor drop-in
     # (/usr/lib/systemd/journald.conf.d/40-rpi-volatile-storage.conf)
