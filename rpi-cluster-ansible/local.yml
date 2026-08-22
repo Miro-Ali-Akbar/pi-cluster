@@ -322,11 +322,14 @@
           when: not k3s_agent_installed.stat.exists
 
     # --- pi3-2: persistent journal ---
-    # Default (Storage=auto) falls back to volatile/RAM-only logging since
-    # /var/log/journal doesn't exist on a fresh install - meaning a reboot
-    # wipes the evidence of whatever caused it. Needed specifically to be
-    # able to confirm whether bluetooth-watchdog.service actually fired
-    # (its own reboot destroys the log proving it did).
+    # Raspberry Pi OS ships a vendor drop-in
+    # (/usr/lib/systemd/journald.conf.d/40-rpi-volatile-storage.conf)
+    # forcing Storage=volatile specifically to reduce SD card wear -
+    # creating /var/log/journal alone doesn't override it, since that
+    # drop-in wins regardless. Overriding it anyway: a reboot (including
+    # bluetooth-watchdog's own) otherwise wipes the evidence of what
+    # caused it, which defeats the point of having the watchdog log
+    # anything. Trade-off accepted: somewhat more SD card writes.
     - name: Persistent journal (survive reboots - needed to debug the Bluetooth watchdog)
       when: ansible_hostname == 'pi3-2'
       block:
@@ -335,12 +338,27 @@
             path: /var/log/journal
             state: directory
             mode: "0755"
-          register: journal_dir
+
+        - name: Create journald config drop-in directory
+          ansible.builtin.file:
+            path: /etc/systemd/journald.conf.d
+            state: directory
+            mode: "0755"
+
+        - name: Override the vendor's volatile-storage default
+          ansible.builtin.copy:
+            dest: /etc/systemd/journald.conf.d/00-persistent-storage.conf
+            mode: "0644"
+            content: |
+              [Journal]
+              Storage=persistent
+          register: journald_override
 
         - name: Restart systemd-journald to switch to persistent storage
           ansible.builtin.systemd:
             name: systemd-journald
             state: restarted
+          when: journald_override.changed
           when: journal_dir.changed
 
     # --- pi3-2: remove the old multi-source cast stack ---
