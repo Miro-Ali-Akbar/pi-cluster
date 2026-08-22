@@ -321,6 +321,39 @@
             sh -s - agent
           when: not k3s_agent_installed.stat.exists
 
+    # --- pi3-2: remove the old multi-source cast stack ---
+    # snapclient/snapserver/shairport-sync/gmediarender, and their
+    # associated config/watchdog files, from when this ran AirPlay+DLNA+PC
+    # audio+Spotify all auto-switching through a Snapcast meta-stream.
+    # Explicit `absent` rather than just no-op-ing on a fresh node, so a
+    # stale node re-running this actually gets them removed too.
+    - name: Remove the old multi-source cast stack
+      when: ansible_hostname == 'pi3-2'
+      block:
+        - name: Remove snapclient, snapserver, shairport-sync, gmediarender
+          ansible.builtin.apt:
+            name:
+              - snapclient
+              - snapserver
+              - shairport-sync
+              - gmediarender
+            state: absent
+            purge: true
+
+        - name: Remove their leftover config/unit/watchdog files
+          ansible.builtin.file:
+            path: "{{ item }}"
+            state: absent
+          loop:
+            - /etc/systemd/system/gmediarender.service
+            - /etc/systemd/system/snapclient-watchdog.service
+            - /etc/systemd/system/snapclient-watchdog.timer
+            - /usr/local/bin/snapclient-watchdog.sh
+            - /etc/systemd/system/raspotify.service.d/override.conf
+            - /etc/tmpfiles.d/castpipes.conf
+            - /run/castpipes
+            - /etc/snapserver.conf
+
     # --- pi3-2: onboard Bluetooth audio-out (paired dumb BT speakers) ---
     # Runs natively on the host, not as a k8s pod - bluealsa needs to own
     # the "org.bluealsa" name on the host's real system D-Bus, and the
@@ -363,201 +396,22 @@
             state: started
             daemon_reload: "{{ bluealsa_unit.changed }}"
 
-        - name: Install snapclient
-          ansible.builtin.apt:
-            name: snapclient
-            state: present
-            update_cache: true
-
-        # Music Assistant's built-in Snapserver runs on the same node
-        # (pi3-2, hostNetwork) - connect over localhost. Output goes through
-        # bluealsa's ALSA plugin to the paired speaker "The_Arms"
-        # (93:30:5A:9B:22:F9), not a real ALSA hardware device.
-        - name: Create snapclient systemd drop-in directory
-          ansible.builtin.file:
-            path: /etc/systemd/system/snapclient.service.d
-            state: directory
-            mode: "0755"
-
-        - name: Install snapclient systemd unit override (point at MA's snapserver + bluealsa output)
-          ansible.builtin.copy:
-            dest: /etc/systemd/system/snapclient.service.d/override.conf
-            mode: "0644"
-            content: |
-              [Unit]
-              After=bluealsa.service
-              Requires=bluealsa.service
-
-              [Service]
-              # The packaged unit doesn't declare this, and snapclient
-              # hardcodes /var/run/snapclient/pid for its daemonizing pid
-              # lock - without it, startup fails immediately.
-              RuntimeDirectory=snapclient
-              ExecStart=
-              ExecStart=/usr/bin/snapclient -h 127.0.0.1 --player alsa -s "bluealsa:DEV=93:30:5A:9B:22:F9,PROFILE=a2dp"
-          register: snapclient_unit
-
-        - name: Enable and start snapclient
-          ansible.builtin.systemd:
-            name: snapclient
-            enabled: true
-            state: restarted
-            daemon_reload: "{{ snapclient_unit.changed }}"
-
-        # snapclient doesn't reliably notice a dead TCP connection on its
-        # own after snapserver restarts (observed twice: the socket looked
-        # ESTABLISHED at the OS level with no data flowing to reveal it was
-        # actually talking to a closed server process, so it never
-        # reconnected until manually restarted). Poll snapserver's own
-        # view of connected clients instead of trusting the socket state.
-        - name: Install the snapclient reconnect watchdog script
-          ansible.builtin.copy:
-            dest: /usr/local/bin/snapclient-watchdog.sh
-            mode: "0755"
-            content: |
-              #!/bin/bash
-              status=$(curl -s --max-time 3 -X POST http://127.0.0.1:1780/jsonrpc \
-                -H "Content-Type: application/json" \
-                -d '{"id":1,"jsonrpc":"2.0","method":"Server.GetStatus"}')
-              groups=$(echo "$status" | python3 -c "
-              import json, sys
-              try:
-                  print(len(json.load(sys.stdin)['result']['server']['groups']))
-              except Exception:
-                  print(0)
-              ")
-              if [ "$groups" = "0" ]; then
-                  systemctl restart snapclient
-              fi
-          register: snapclient_watchdog_script
-
-        - name: Install the snapclient reconnect watchdog timer
-          ansible.builtin.copy:
-            dest: "/etc/systemd/system/snapclient-watchdog.{{ item }}"
-            mode: "0644"
-            content: "{{ snapclient_watchdog_units[item] }}"
-          loop:
-            - service
-            - timer
-          vars:
-            snapclient_watchdog_units:
-              service: |
-                [Unit]
-                Description=Restart snapclient if it's not actually connected to snapserver
-
-                [Service]
-                Type=oneshot
-                ExecStart=/usr/local/bin/snapclient-watchdog.sh
-              timer: |
-                [Unit]
-                Description=Periodically check snapclient is actually connected
-
-                [Timer]
-                OnUnitActiveSec=2min
-                OnBootSec=2min
-
-                [Install]
-                WantedBy=timers.target
-          register: snapclient_watchdog_units_installed
-
-        - name: Enable and start the snapclient reconnect watchdog timer
-          ansible.builtin.systemd:
-            name: snapclient-watchdog.timer
-            enabled: true
-            state: started
-            daemon_reload: "{{ snapclient_watchdog_units_installed.changed }}"
-
-    # --- pi3-2: lightweight cast sources feeding the speaker above ---
-    # Snapserver + three small purpose-built receivers (no Music Assistant -
-    # that pulled in a full media-library/streaming-provider app and an
-    # ffmpeg-heavy DSP chain just to reach one Bluetooth speaker). Each
-    # receiver writes raw PCM into its own pipe in /run/castpipes; a
-    # snapserver "meta" stream auto-plays whichever pipe currently has audio
-    # (priority = listed order), so casting from any source just works
-    # without manually switching. The group's stream/name assignment lives
-    # in snapserver's own state (/var/lib/snapserver/server.json), not here.
-    - name: Cast sources (snapserver, AirPlay, Spotify Connect, DLNA) tasks
+    # --- pi3-2: Spotify Connect casting, gated by an HA switch ---
+    # Just raspotify (librespot) -> bluealsa -> speaker, no Snapcast layer.
+    # An earlier version of this ran a full multi-source stack (AirPlay,
+    # DLNA, PC audio, all auto-switching via a Snapcast meta-stream) - cut
+    # back to Spotify-only per request, since Snapcast's 400ms sync buffer
+    # was pure overhead once there was only ever one source to arbitrate.
+    #
+    # Off by default: the speaker is a normal Bluetooth device (free for a
+    # phone to pair directly) until the "Speaker Cast Stack" HA switch
+    # explicitly turns raspotify on and connects it. bluealsa itself stays
+    # enabled/running always - it doesn't hold any connection to the
+    # speaker on its own, it's just idle until something (raspotify) uses
+    # it, so it doesn't conflict with a phone pairing directly.
+    - name: Spotify Connect casting tasks
       when: ansible_hostname == 'pi3-2'
       block:
-        - name: Install snapserver, shairport-sync (AirPlay), gmediarender (DLNA)
-          ansible.builtin.apt:
-            name:
-              - snapserver
-              - shairport-sync
-              - gmediarender
-            state: present
-            update_cache: true
-
-        - name: Create shared pipe directory at boot (tmpfs, cleared on reboot)
-          ansible.builtin.copy:
-            dest: /etc/tmpfiles.d/castpipes.conf
-            mode: "0644"
-            content: "d /run/castpipes 0777 root root -\n"
-          register: castpipes_tmpfile
-
-        - name: Apply tmpfiles.d now (so it exists without a reboot)
-          ansible.builtin.command: systemd-tmpfiles --create /etc/tmpfiles.d/castpipes.conf
-          when: castpipes_tmpfile.changed
-
-        - name: Configure snapserver's stream sources
-          ansible.builtin.copy:
-            dest: /etc/snapserver.conf
-            mode: "0644"
-            content: |
-              [server]
-              [ssl]
-              [http]
-              doc_root = /usr/share/snapserver/snapweb
-              [tcp]
-              [stream]
-              source = pipe:///run/castpipes/airplay?name=AirPlay&mode=create&codec=null
-              # Spotify's decoded audio is natively 44.1kHz, unlike every
-              # other source here (48kHz) - without declaring the pipe's
-              # real rate, snapserver assumes the global 48kHz default and
-              # plays it back ~8.8% too fast (48000/44100), audibly sped up.
-              source = pipe:///run/castpipes/spotify?name=Spotify&mode=create&codec=null&sampleformat=44100:16:2
-              source = pipe:///run/castpipes/dlna?name=DLNA&mode=create&codec=null
-              source = tcp://0.0.0.0:4954?name=PC-Windows&codec=null
-              source = tcp://0.0.0.0:4955?name=PC-Linux&codec=null
-              source = meta:///Spotify/AirPlay/DLNA/PC-Windows/PC-Linux?name=BigSpeakerCast
-              [streaming_client]
-              [logging]
-          register: snapserver_conf
-
-        - name: Enable and start snapserver
-          ansible.builtin.systemd:
-            name: snapserver
-            enabled: true
-            state: "{{ 'restarted' if snapserver_conf.changed else 'started' }}"
-
-        # These regexps intentionally match ONLY the package's exact pristine
-        # commented-out default line (unique text, including its trailing
-        # comment) - never the already-active line this task produces. That
-        # makes the replace self-consuming: it fires once, then the pristine
-        # text is gone and it's a permanent no-op. A broader regexp matching
-        # both the default AND already-active forms once uncommented BOTH on
-        # a real run here, producing two active `output_backend` lines and a
-        # fatal "duplicate setting name" error from shairport-sync.
-        - name: Point shairport-sync's audio output at its AirPlay pipe
-          ansible.builtin.replace:
-            path: /etc/shairport-sync.conf
-            regexp: '^//\s*output_backend = "alsa";.*$'
-            replace: '	output_backend = "pipe";'
-          register: shairport_backend
-
-        - name: Set shairport-sync's pipe path
-          ansible.builtin.replace:
-            path: /etc/shairport-sync.conf
-            regexp: '^//\s*name = "/tmp/shairport-sync-audio";.*$'
-            replace: '	name = "/run/castpipes/airplay";'
-          register: shairport_pipe
-
-        - name: Enable and restart shairport-sync
-          ansible.builtin.systemd:
-            name: shairport-sync
-            enabled: true
-            state: "{{ 'restarted' if (shairport_backend.changed or shairport_pipe.changed) else 'started' }}"
-
         - name: Add raspotify's signed apt key
           ansible.builtin.get_url:
             url: https://dtcooper.github.io/raspotify/key.asc
@@ -577,68 +431,43 @@
             state: present
             update_cache: "{{ raspotify_repo.changed }}"
 
-        - name: Point raspotify's output at its Spotify pipe, name the device
+        - name: Point raspotify straight at bluealsa, name the device
           ansible.builtin.lineinfile:
             path: /etc/raspotify/conf
             regexp: "{{ item.regexp }}"
             line: "{{ item.line }}"
           loop:
-            - regexp: '^#?LIBRESPOT_BACKEND=(pipe)?$'
-              line: "LIBRESPOT_BACKEND=pipe"
-            - regexp: '^#?LIBRESPOT_DEVICE=(/run/castpipes/spotify)?$'
-              line: "LIBRESPOT_DEVICE=/run/castpipes/spotify"
+            - regexp: '^#?LIBRESPOT_BACKEND=(alsa)?$'
+              line: "LIBRESPOT_BACKEND=alsa"
+            - regexp: '^#?LIBRESPOT_DEVICE=(bluealsa:DEV=93:30:5A:9B:22:F9,PROFILE=a2dp)?$'
+              line: "LIBRESPOT_DEVICE=bluealsa:DEV=93:30:5A:9B:22:F9,PROFILE=a2dp"
             - regexp: '^#?LIBRESPOT_NAME=("Librespot"|"Big Speaker Sound In")$'
               line: 'LIBRESPOT_NAME="Big Speaker Sound In"'
           register: raspotify_conf
 
-        - name: Allow raspotify to write outside its default sandboxed paths (needs the shared pipe dir)
-          ansible.builtin.copy:
-            dest: /etc/systemd/system/raspotify.service.d/override.conf
-            mode: "0644"
-            content: |
-              [Service]
-              ReadWritePaths=/run/castpipes
-          register: raspotify_override
-
-        - name: Enable and restart raspotify
+        - name: Restart raspotify if config changed (default is off - see below)
           ansible.builtin.systemd:
             name: raspotify
-            enabled: true
-            state: "{{ 'restarted' if (raspotify_conf.changed or raspotify_override.changed) else 'started' }}"
-            daemon_reload: "{{ raspotify_override.changed }}"
+            state: restarted
+          when: raspotify_conf.changed
 
-        - name: Install gmediarender systemd unit (DLNA renderer -> its own pipe; package ships no unit)
-          ansible.builtin.copy:
-            dest: /etc/systemd/system/gmediarender.service
-            mode: "0644"
-            content: |
-              [Unit]
-              Description=gmediarender (DLNA renderer -> Snapcast pipe)
-              After=network-online.target avahi-daemon.service
-              Wants=network-online.target
-
-              [Service]
-              User=nobody
-              ExecStart=/usr/bin/gmediarender -f "The_Arms_DLNA" --gstout-audiopipe="audioconvert ! audioresample ! audio/x-raw,format=S16LE,rate=48000,channels=2 ! filesink location=/run/castpipes/dlna"
-              Restart=on-failure
-
-              [Install]
-              WantedBy=multi-user.target
-          register: gmediarender_unit
-
-        - name: Enable and start gmediarender
+        # Deliberately enabled: false / not force-started - off is the
+        # default, only the HA switch (forced-command SSH below) turns it
+        # on. Ansible only touches its enabled-at-boot state here, never
+        # its running state, so a live "on" toggle survives a config-only
+        # ansible-pull run - only an actual reboot (which drops the
+        # Bluetooth connection anyway) resets it to the off default.
+        - name: Ensure raspotify doesn't auto-start at boot
           ansible.builtin.systemd:
-            name: gmediarender
-            enabled: true
-            state: "{{ 'restarted' if gmediarender_unit.changed else 'started' }}"
-            daemon_reload: "{{ gmediarender_unit.changed }}"
+            name: raspotify
+            enabled: false
 
         # Lets a Home Assistant switch free the speaker for direct phone
-        # pairing: stopping the cast stack alone isn't enough, since BlueZ
-        # keeps the ACL connection up independent of bluealsa/snapclient -
-        # the speaker stays unavailable to any other device until it's
-        # explicitly disconnected too.
-        - name: Install the cast-stack toggle script (root-only, forced-command restricted)
+        # pairing: stopping raspotify alone isn't enough, since BlueZ keeps
+        # the ACL connection up independent of it - the speaker stays
+        # unavailable to any other device until it's explicitly
+        # disconnected too.
+        - name: Install the cast toggle script (root-only, forced-command restricted)
           ansible.builtin.copy:
             dest: /usr/local/bin/ha-cast-toggle.sh
             mode: "0700"
@@ -646,29 +475,18 @@
               #!/bin/bash
               set -euo pipefail
               SPEAKER_MAC="93:30:5A:9B:22:F9"
-              SERVICES="snapclient bluealsa gmediarender raspotify shairport-sync snapserver"
               case "${SSH_ORIGINAL_COMMAND:-}" in
                 cast-stack-stop)
-                  systemctl stop $SERVICES
+                  systemctl stop raspotify
                   bluetoothctl disconnect "$SPEAKER_MAC" || true
                   ;;
                 cast-stack-start)
-                  # dependency order: reverse of the stop order above. Each
-                  # sleep matters - bluealsa needs a moment to finish
-                  # registering its A2DP endpoints with bluetoothd before a
-                  # connect can negotiate a media transport, and snapclient
-                  # needs that transport (the bluealsa PCM) to already exist
-                  # or it fails immediately with "PCM not found" and burns
-                  # through its whole restart-burst limit before bluealsa
-                  # ever catches up.
-                  systemctl start snapserver shairport-sync raspotify gmediarender bluealsa
-                  sleep 2
                   bluetoothctl connect "$SPEAKER_MAC" || true
                   sleep 2
-                  systemctl start snapclient
+                  systemctl start raspotify
                   ;;
                 cast-stack-status)
-                  systemctl is-active snapclient
+                  systemctl is-active raspotify
                   ;;
                 *)
                   echo "unrecognized command" >&2
@@ -681,3 +499,63 @@
             user: root
             key: "{{ ha_cast_toggle_pubkey }}"
             key_options: 'command="/usr/local/bin/ha-cast-toggle.sh",no-port-forwarding,no-agent-forwarding,no-X11-forwarding,no-pty'
+
+        # pi3-2's onboard Bluetooth chip has hardware-faulted twice
+        # ("hardware error 0x00", even the reset command times out) -
+        # traced to undervoltage (confirmed via dmesg). A proper PSU/cable
+        # is the real fix; this is a safety net until then. A plain
+        # service restart doesn't clear the fault - only a reboot has, in
+        # both observed cases - so this escalates to one if a soft
+        # power-on doesn't recover it.
+        - name: Install the Bluetooth adapter watchdog script
+          ansible.builtin.copy:
+            dest: /usr/local/bin/bluetooth-watchdog.sh
+            mode: "0755"
+            content: |
+              #!/bin/bash
+              if bluetoothctl show | grep -q "Powered: yes"; then
+                  exit 0
+              fi
+              bluetoothctl power on >/dev/null 2>&1
+              sleep 2
+              if bluetoothctl show | grep -q "Powered: yes"; then
+                  exit 0
+              fi
+              systemctl reboot
+          register: bluetooth_watchdog_script
+
+        - name: Install the Bluetooth adapter watchdog timer
+          ansible.builtin.copy:
+            dest: "/etc/systemd/system/bluetooth-watchdog.{{ item }}"
+            mode: "0644"
+            content: "{{ bluetooth_watchdog_units[item] }}"
+          loop:
+            - service
+            - timer
+          vars:
+            bluetooth_watchdog_units:
+              service: |
+                [Unit]
+                Description=Recover the Bluetooth adapter if it's not powered (reboot if a soft recovery fails)
+
+                [Service]
+                Type=oneshot
+                ExecStart=/usr/local/bin/bluetooth-watchdog.sh
+              timer: |
+                [Unit]
+                Description=Periodically check the Bluetooth adapter is actually powered
+
+                [Timer]
+                OnUnitActiveSec=2min
+                OnBootSec=2min
+
+                [Install]
+                WantedBy=timers.target
+          register: bluetooth_watchdog_units_installed
+
+        - name: Enable and start the Bluetooth adapter watchdog timer
+          ansible.builtin.systemd:
+            name: bluetooth-watchdog.timer
+            enabled: true
+            state: started
+            daemon_reload: "{{ bluetooth_watchdog_units_installed.changed }}"
