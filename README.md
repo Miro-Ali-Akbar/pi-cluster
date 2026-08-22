@@ -69,7 +69,18 @@ arbitrate.
 twice (`hardware error 0x00` in `dmesg`, even the reset command times out —
 only a reboot has cleared it). Traced to undervoltage. A `bluetooth-watchdog`
 timer checks every 2 minutes and reboots the node if a soft recovery fails,
-but the real fix is a proper PSU/cable for `pi3-2`.
+but the real fix is a proper PSU/cable for `pi3-2`. `/var/log/journal` is
+persisted specifically so a reboot doesn't destroy the evidence of whether
+the watchdog fired.
+
+**Tried and reverted: two speakers playing simultaneously.** An ALSA
+`multi`+`route` config duplicated raspotify's output to two paired
+speakers ("The_Arms" + "Buddy") over independent Bluetooth links. Each
+speaker played fine, but the two had a noticeable (~50ms) sync offset with
+no shared clock to correct it (that's exactly the problem Snapcast solves,
+which was removed above) — and then a Bluetooth hardware fault took both
+down. Not worth it for one speaker's worth of practical benefit; reverted
+to single-speaker.
 
 ## Operating
 

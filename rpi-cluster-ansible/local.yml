@@ -321,6 +321,28 @@
             sh -s - agent
           when: not k3s_agent_installed.stat.exists
 
+    # --- pi3-2: persistent journal ---
+    # Default (Storage=auto) falls back to volatile/RAM-only logging since
+    # /var/log/journal doesn't exist on a fresh install - meaning a reboot
+    # wipes the evidence of whatever caused it. Needed specifically to be
+    # able to confirm whether bluetooth-watchdog.service actually fired
+    # (its own reboot destroys the log proving it did).
+    - name: Persistent journal (survive reboots - needed to debug the Bluetooth watchdog)
+      when: ansible_hostname == 'pi3-2'
+      block:
+        - name: Create /var/log/journal
+          ansible.builtin.file:
+            path: /var/log/journal
+            state: directory
+            mode: "0755"
+          register: journal_dir
+
+        - name: Restart systemd-journald to switch to persistent storage
+          ansible.builtin.systemd:
+            name: systemd-journald
+            state: restarted
+          when: journal_dir.changed
+
     # --- pi3-2: remove the old multi-source cast stack ---
     # snapclient/snapserver/shairport-sync/gmediarender, and their
     # associated config/watchdog files, from when this ran AirPlay+DLNA+PC
