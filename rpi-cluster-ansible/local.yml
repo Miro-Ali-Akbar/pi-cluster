@@ -359,7 +359,6 @@
             name: systemd-journald
             state: restarted
           when: journald_override.changed
-          when: journal_dir.changed
 
     # --- pi3-2: remove the old multi-source cast stack ---
     # snapclient/snapserver/shairport-sync/gmediarender, and their
