@@ -1,0 +1,62 @@
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: certbot-renew
+  namespace: edge-proxy
+spec:
+  # Let's Encrypt certs are valid 90 days; certbot only actually renews
+  # inside the last 30, so a daily check is cheap and keeps renewal timely.
+  schedule: "17 3 * * *"
+  jobTemplate:
+    spec:
+      template:
+        spec:
+          serviceAccountName: certbot
+          restartPolicy: OnFailure
+          nodeSelector:
+            kubernetes.io/hostname: pi3-2 # shares edge-proxy's hostPath webroot/cert dirs
+          initContainers:
+            - name: certbot-renew
+              image: certbot/certbot:latest
+              command:
+                - certbot
+                - renew
+                - --webroot
+                - -w
+                - /var/www/acme
+                - --deploy-hook
+                - touch /shared/renewed
+              volumeMounts:
+                - name: acme-webroot
+                  mountPath: /var/www/acme
+                - name: tls-certs
+                  mountPath: /etc/letsencrypt
+                - name: shared
+                  mountPath: /shared
+          containers:
+            - name: restart-if-renewed
+              image: bitnami/kubectl:latest
+              command:
+                - sh
+                - -c
+                - |
+                  if [ -f /shared/renewed ]; then
+                    echo "Cert renewed, restarting edge-proxy"
+                    kubectl rollout restart deployment/edge-proxy -n edge-proxy
+                  else
+                    echo "No renewal due"
+                  fi
+              volumeMounts:
+                - name: shared
+                  mountPath: /shared
+          volumes:
+            - name: acme-webroot
+              hostPath:
+                path: /srv/acme-webroot
+                type: DirectoryOrCreate
+            - name: tls-certs
+              hostPath:
+                path: /srv/tls-certs
+                type: DirectoryOrCreate
+            - name: shared
+              emptyDir: {}

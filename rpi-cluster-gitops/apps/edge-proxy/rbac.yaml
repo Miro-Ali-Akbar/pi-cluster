@@ -1,0 +1,29 @@
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: certbot
+  namespace: edge-proxy
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: restart-edge-proxy
+  namespace: edge-proxy
+rules:
+  - apiGroups: ["apps"]
+    resources: ["deployments"]
+    verbs: ["get", "patch"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: certbot-restart-edge-proxy
+  namespace: edge-proxy
+subjects:
+  - kind: ServiceAccount
+    name: certbot
+    namespace: edge-proxy
+roleRef:
+  kind: Role
+  name: restart-edge-proxy
+  apiGroup: rbac.authorization.k8s.io

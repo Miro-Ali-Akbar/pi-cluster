@@ -1,0 +1,46 @@
+# NOT part of kustomization.yaml on purpose - this is a one-time manual
+# step (`kubectl apply -f certbot-issue-job.yaml`), run once port 80/443
+# forwarding to pi3-2 is confirmed live and miro.zip resolves publicly.
+# Let's Encrypt's HTTP-01 challenge needs to reach this box from the
+# internet, so it will fail until then. certbot-renew-cronjob.yaml (which
+# IS in the kustomization) takes over automatic renewal after this.
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: certbot-issue
+  namespace: edge-proxy
+spec:
+  template:
+    spec:
+      restartPolicy: Never
+      nodeSelector:
+        kubernetes.io/hostname: pi3-2 # shares edge-proxy's hostPath webroot/cert dirs
+      containers:
+        - name: certbot-issue
+          image: certbot/certbot:latest
+          command:
+            - certbot
+            - certonly
+            - --webroot
+            - -w
+            - /var/www/acme
+            - -d
+            - miro.zip
+            - --email
+            - miro@impactsolution.se
+            - --agree-tos
+            - --non-interactive
+          volumeMounts:
+            - name: acme-webroot
+              mountPath: /var/www/acme
+            - name: tls-certs
+              mountPath: /etc/letsencrypt
+      volumes:
+        - name: acme-webroot
+          hostPath:
+            path: /srv/acme-webroot
+            type: DirectoryOrCreate
+        - name: tls-certs
+          hostPath:
+            path: /srv/tls-certs
+            type: DirectoryOrCreate

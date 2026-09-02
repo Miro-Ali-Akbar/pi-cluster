@@ -4,3 +4,5 @@ resources:
   - namespace.yaml
   - configmap.yaml
   - deployment.yaml
+  - rbac.yaml
+  - certbot-renew-cronjob.yaml

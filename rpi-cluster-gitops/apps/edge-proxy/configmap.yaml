@@ -8,11 +8,20 @@ data:
   # original request URI unchanged, since site-counters expects full
   # /api/... paths and web-server just serves files by path.
   nginx.conf: |
+    # root, so the worker can read the root-owned cert/key files certbot
+    # writes to the hostPath tls-certs volume once HTTPS is live.
+    user root;
     events {}
     http {
       server {
         listen 80;
         server_name miro.zip;
+
+        # certbot webroot HTTP-01 challenge - served in plain HTTP even
+        # after HTTPS is live, since Let's Encrypt validates over :80.
+        location /.well-known/acme-challenge/ {
+          root /var/www/acme;
+        }
 
         location /api/ {
           proxy_pass http://site-counters.site-counters.svc.cluster.local:8080;

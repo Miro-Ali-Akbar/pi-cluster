@@ -40,7 +40,23 @@ spec:
             - name: conf
               mountPath: /etc/nginx/nginx.conf
               subPath: nginx.conf
+            - name: acme-webroot
+              mountPath: /var/www/acme
+            - name: tls-certs
+              mountPath: /etc/letsencrypt
+              readOnly: true
       volumes:
         - name: conf
           configMap:
             name: edge-proxy-conf
+        # hostPath, not a PVC: certbot (see certbot-issue-job.yaml /
+        # certbot-renew-cronjob.yaml) is pinned to this same node so they
+        # can share plain host directories - no need for Longhorn RWX here.
+        - name: acme-webroot
+          hostPath:
+            path: /srv/acme-webroot
+            type: DirectoryOrCreate
+        - name: tls-certs
+          hostPath:
+            path: /srv/tls-certs
+            type: DirectoryOrCreate
