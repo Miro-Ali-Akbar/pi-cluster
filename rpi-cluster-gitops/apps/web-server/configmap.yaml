@@ -1,0 +1,19 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: web-server-conf
+  namespace: web-server
+data:
+  # git-sync (below) checks the repo out to /git/website via a symlink it
+  # repoints atomically on every update, so root always points at a
+  # complete checkout - never a half-written one.
+  default.conf: |
+    server {
+      listen 80;
+      root /git/website;
+      index index.html;
+
+      location / {
+        try_files $uri $uri/ =404;
+      }
+    }
