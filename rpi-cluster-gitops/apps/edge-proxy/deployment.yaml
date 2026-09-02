@@ -1,0 +1,46 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: edge-proxy
+  namespace: edge-proxy
+spec:
+  replicas: 1
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      app: edge-proxy
+  template:
+    metadata:
+      labels:
+        app: edge-proxy
+    spec:
+      # k3s runs with traefik disabled (memory savings on pi4 - see
+      # rpi-cluster-ansible/local.yml), so this stands in as the single
+      # entry point for miro.zip. hostNetwork binds port 80 straight on the
+      # node's own IP - no klipper-lb/ingress-controller needed - so
+      # the router's port-forward for miro.zip just needs to target this
+      # node (pi3-2, chosen to sit next to web-server).
+      hostNetwork: true
+      dnsPolicy: ClusterFirstWithHostNet
+      nodeSelector:
+        kubernetes.io/hostname: pi3-2
+      containers:
+        - name: nginx
+          image: nginx:stable-alpine
+          ports:
+            - containerPort: 80
+          resources:
+            requests:
+              cpu: 25m
+              memory: 16Mi
+            limits:
+              memory: 32Mi
+          volumeMounts:
+            - name: conf
+              mountPath: /etc/nginx/nginx.conf
+              subPath: nginx.conf
+      volumes:
+        - name: conf
+          configMap:
+            name: edge-proxy-conf

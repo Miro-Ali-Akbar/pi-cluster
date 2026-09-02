@@ -1,0 +1,28 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: edge-proxy-conf
+  namespace: edge-proxy
+data:
+  # No proxy_pass trailing path on either location - lets nginx forward the
+  # original request URI unchanged, since site-counters expects full
+  # /api/... paths and web-server just serves files by path.
+  nginx.conf: |
+    events {}
+    http {
+      server {
+        listen 80;
+        server_name miro.zip;
+
+        location /api/ {
+          proxy_pass http://site-counters.site-counters.svc.cluster.local:8080;
+          proxy_set_header Host $host;
+          proxy_set_header Origin $http_origin;
+        }
+
+        location / {
+          proxy_pass http://web-server.web-server.svc.cluster.local:80;
+          proxy_set_header Host $host;
+        }
+      }
+    }

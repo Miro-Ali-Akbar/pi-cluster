@@ -4,6 +4,7 @@ resources:
   - home-assistant
   - web-server
   - site-counters
+  - edge-proxy
   - nas
   - matter-server
   - otbr
