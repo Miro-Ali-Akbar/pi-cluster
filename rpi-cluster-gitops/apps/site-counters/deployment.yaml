@@ -1,0 +1,48 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: site-counters
+  namespace: site-counters
+spec:
+  replicas: 1
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      app: site-counters
+  template:
+    metadata:
+      labels:
+        app: site-counters
+    spec:
+      nodeSelector:
+        node-role: worker # same rationale as web-server - keep pi4's memory free
+      containers:
+        - name: counters
+          image: python:3.12-alpine
+          command: ["python", "/app/app.py"]
+          ports:
+            - containerPort: 8080
+          env:
+            - name: DB_PATH
+              value: /data/counts.db
+            - name: ALLOWED_ORIGINS
+              value: "https://miro.zip"
+          resources:
+            requests:
+              cpu: 50m
+              memory: 32Mi
+            limits:
+              memory: 64Mi
+          volumeMounts:
+            - name: app
+              mountPath: /app
+            - name: data
+              mountPath: /data
+      volumes:
+        - name: app
+          configMap:
+            name: site-counters-app
+        - name: data
+          persistentVolumeClaim:
+            claimName: site-counters-data

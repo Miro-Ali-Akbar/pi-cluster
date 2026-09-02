@@ -1,0 +1,109 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: site-counters-app
+  namespace: site-counters
+data:
+  app.py: |
+    # stdlib-only HTTP server backing the clap/visitor counters on miro.zip.
+    # No pip install at container start (flaky on a Pi over home internet) -
+    # sqlite3 and http.server both ship with the base python image.
+    import http.server
+    import json
+    import os
+    import socketserver
+    import sqlite3
+    import threading
+
+    DB_PATH = os.environ.get("DB_PATH", "/data/counts.db")
+    ALLOWED_ORIGINS = set(
+        o.strip() for o in os.environ.get(
+            "ALLOWED_ORIGINS", "https://miro.zip"
+        ).split(",")
+    )
+    lock = threading.Lock()
+
+
+    def init_db():
+        conn = sqlite3.connect(DB_PATH)
+        conn.execute(
+            "CREATE TABLE IF NOT EXISTS counters "
+            "(name TEXT PRIMARY KEY, value INTEGER NOT NULL)"
+        )
+        for name in ("claps", "visitors"):
+            conn.execute(
+                "INSERT OR IGNORE INTO counters (name, value) VALUES (?, 0)",
+                (name,),
+            )
+        conn.commit()
+        conn.close()
+
+
+    def get_counts():
+        conn = sqlite3.connect(DB_PATH)
+        rows = conn.execute("SELECT name, value FROM counters").fetchall()
+        conn.close()
+        return {name: value for name, value in rows}
+
+
+    def increment(name):
+        with lock:
+            conn = sqlite3.connect(DB_PATH)
+            conn.execute(
+                "UPDATE counters SET value = value + 1 WHERE name = ?", (name,)
+            )
+            conn.commit()
+            value = conn.execute(
+                "SELECT value FROM counters WHERE name = ?", (name,)
+            ).fetchone()[0]
+            conn.close()
+            return value
+
+
+    class Handler(http.server.BaseHTTPRequestHandler):
+        def _cors(self):
+            origin = self.headers.get("Origin")
+            if origin in ALLOWED_ORIGINS:
+                self.send_header("Access-Control-Allow-Origin", origin)
+                self.send_header("Vary", "Origin")
+            self.send_header("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
+            self.send_header("Access-Control-Allow-Headers", "Content-Type")
+
+        def _json(self, code, payload):
+            body = json.dumps(payload).encode()
+            self.send_response(code)
+            self._cors()
+            self.send_header("Content-Type", "application/json")
+            self.send_header("Content-Length", str(len(body)))
+            self.end_headers()
+            self.wfile.write(body)
+
+        def do_OPTIONS(self):
+            self.send_response(204)
+            self._cors()
+            self.end_headers()
+
+        def do_GET(self):
+            if self.path == "/api/counts":
+                self._json(200, get_counts())
+            elif self.path == "/healthz":
+                self._json(200, {"ok": True})
+            else:
+                self._json(404, {"error": "not found"})
+
+        def do_POST(self):
+            if self.path == "/api/clap":
+                self._json(200, {"claps": increment("claps")})
+            elif self.path == "/api/visit":
+                self._json(200, {"visitors": increment("visitors")})
+            else:
+                self._json(404, {"error": "not found"})
+
+        def log_message(self, format, *args):
+            pass
+
+
+    if __name__ == "__main__":
+        init_db()
+        with socketserver.ThreadingTCPServer(("0.0.0.0", 8080), Handler) as httpd:
+            httpd.serve_forever()

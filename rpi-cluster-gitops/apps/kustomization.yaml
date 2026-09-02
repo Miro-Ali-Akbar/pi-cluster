@@ -3,6 +3,7 @@ kind: Kustomization
 resources:
   - home-assistant
   - web-server
+  - site-counters
   - nas
   - matter-server
   - otbr
