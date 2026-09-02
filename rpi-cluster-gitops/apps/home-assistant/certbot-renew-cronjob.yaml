@@ -1,0 +1,69 @@
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: certbot-renew
+  namespace: home-assistant
+spec:
+  # certbot stores the manual-auth/cleanup hook commands used at issuance
+  # in /etc/letsencrypt/renewal/home.miro.zip.conf, so plain "certbot
+  # renew" replays the same DuckDNS DNS-01 flow automatically - as long as
+  # the hook scripts and env vars stay available at the same paths here.
+  schedule: "23 3 * * *"
+  jobTemplate:
+    spec:
+      template:
+        spec:
+          serviceAccountName: certbot-ha
+          restartPolicy: OnFailure
+          nodeSelector:
+            node-role: control-plane # matches HA's own /etc/letsencrypt hostPath, on pi4
+          initContainers:
+            - name: certbot-renew
+              image: certbot/certbot:latest
+              command:
+                - certbot
+                - renew
+                - --deploy-hook
+                - touch /shared/renewed
+              env:
+                - name: DUCKDNS_DOMAIN
+                  value: "thearmorassistant"
+                - name: DUCKDNS_TOKEN
+                  valueFrom:
+                    secretKeyRef:
+                      name: duckdns-token
+                      key: token
+              volumeMounts:
+                - name: tls-certs
+                  mountPath: /etc/letsencrypt
+                - name: hooks
+                  mountPath: /scripts
+                - name: shared
+                  mountPath: /shared
+          containers:
+            - name: restart-if-renewed
+              image: bitnami/kubectl:latest
+              command:
+                - sh
+                - -c
+                - |
+                  if [ -f /shared/renewed ]; then
+                    echo "Cert renewed, restarting home-assistant"
+                    kubectl rollout restart deployment/home-assistant -n home-assistant
+                  else
+                    echo "No renewal due"
+                  fi
+              volumeMounts:
+                - name: shared
+                  mountPath: /shared
+          volumes:
+            - name: tls-certs
+              hostPath:
+                path: /etc/letsencrypt
+                type: Directory
+            - name: hooks
+              configMap:
+                name: certbot-duckdns-hooks
+                defaultMode: 0755
+            - name: shared
+              emptyDir: {}

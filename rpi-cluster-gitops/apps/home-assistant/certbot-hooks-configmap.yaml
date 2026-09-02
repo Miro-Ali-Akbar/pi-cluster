@@ -1,0 +1,47 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: certbot-duckdns-hooks
+  namespace: home-assistant
+data:
+  # DuckDNS has no certbot DNS plugin, but its update API is a plain HTTP
+  # GET, so manual-auth/cleanup hooks are simpler than pulling in a
+  # third-party plugin. python3 is guaranteed present (it's certbot's own
+  # runtime), so no extra tooling (curl etc.) needs to exist in the image.
+  #
+  # This only works for home.miro.zip because _acme-challenge.home.miro.zip
+  # is CNAME'd (in Porkbun) to _acme-challenge.<DUCKDNS_DOMAIN>.duckdns.org -
+  # Let's Encrypt follows that CNAME to find the TXT record this hook writes.
+  auth-hook.py: |
+    import os
+    import time
+    import urllib.request
+
+    domain = os.environ["DUCKDNS_DOMAIN"]
+    token = os.environ["DUCKDNS_TOKEN"]
+    validation = os.environ["CERTBOT_VALIDATION"]
+
+    url = (
+        f"https://www.duckdns.org/update?domains={domain}"
+        f"&token={token}&txt={validation}&verbose=true"
+    )
+    resp = urllib.request.urlopen(url, timeout=15).read().decode()
+    print(f"DuckDNS update response: {resp}")
+    if not resp.startswith("OK"):
+        raise SystemExit(f"DuckDNS update failed: {resp}")
+
+    # give DuckDNS and downstream resolvers time to actually serve the
+    # new TXT record before certbot asks Let's Encrypt to validate it
+    time.sleep(30)
+  cleanup-hook.py: |
+    import os
+    import urllib.request
+
+    domain = os.environ["DUCKDNS_DOMAIN"]
+    token = os.environ["DUCKDNS_TOKEN"]
+
+    url = (
+        f"https://www.duckdns.org/update?domains={domain}"
+        f"&token={token}&txt=removed&clear=true"
+    )
+    urllib.request.urlopen(url, timeout=15).read()

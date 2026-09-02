@@ -7,3 +7,6 @@ resources:
   - service.yaml
   - backup-pvc.yaml
   - backup-cronjob.yaml
+  - certbot-hooks-configmap.yaml
+  - certbot-rbac.yaml
+  - certbot-renew-cronjob.yaml

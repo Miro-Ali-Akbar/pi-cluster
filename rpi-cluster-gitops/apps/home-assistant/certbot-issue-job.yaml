@@ -1,0 +1,62 @@
+# NOT part of kustomization.yaml on purpose - one-time manual step
+# (`kubectl apply -f certbot-issue-job.yaml`), run once the Porkbun CNAME
+# delegating _acme-challenge.home.miro.zip to DuckDNS is confirmed live.
+# certbot-renew-cronjob.yaml (which IS in the kustomization) takes over
+# automatic renewal after this succeeds.
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: certbot-issue-ha
+  namespace: home-assistant
+spec:
+  template:
+    spec:
+      restartPolicy: Never
+      nodeSelector:
+        node-role: control-plane # matches HA's own /etc/letsencrypt hostPath, on pi4
+      containers:
+        - name: certbot-issue
+          image: certbot/certbot:latest
+          command:
+            - certbot
+            - certonly
+            - --manual
+            - --preferred-challenges
+            - dns
+            - --manual-auth-hook
+            - python3 /scripts/auth-hook.py
+            - --manual-cleanup-hook
+            - python3 /scripts/cleanup-hook.py
+            - -d
+            - home.miro.zip
+            - --email
+            - miro@impactsolution.se
+            - --agree-tos
+            - --non-interactive
+            # A cert for home.miro.zip already exists (issued out-of-band,
+            # method unknown, no automated renewal). Force reissuance
+            # through this DNS-01 flow so certbot records these hooks in
+            # its renewal conf and future "certbot renew" reuses them.
+            - --force-renewal
+          env:
+            - name: DUCKDNS_DOMAIN
+              value: "thearmorassistant"
+            - name: DUCKDNS_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: duckdns-token
+                  key: token
+          volumeMounts:
+            - name: tls-certs
+              mountPath: /etc/letsencrypt
+            - name: hooks
+              mountPath: /scripts
+      volumes:
+        - name: tls-certs
+          hostPath:
+            path: /etc/letsencrypt
+            type: Directory
+        - name: hooks
+          configMap:
+            name: certbot-duckdns-hooks
+            defaultMode: 0755
