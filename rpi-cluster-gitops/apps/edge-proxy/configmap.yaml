@@ -43,6 +43,20 @@ data:
           root /var/www/acme;
         }
 
+        # Cert exists now - send everything else to HTTPS.
+        location / {
+          return 301 https://$host$request_uri;
+        }
+      }
+
+      # HTTPS for miro.zip, reached via the stream block's "default" route
+      # above (127.0.0.1:8443).
+      server {
+        listen 127.0.0.1:8443 ssl;
+        server_name miro.zip;
+        ssl_certificate /etc/letsencrypt/live/miro.zip/fullchain.pem;
+        ssl_certificate_key /etc/letsencrypt/live/miro.zip/privkey.pem;
+
         location /api/ {
           proxy_pass http://site-counters.site-counters.svc.cluster.local:8080;
           proxy_set_header Host $host;
@@ -54,28 +68,4 @@ data:
           proxy_set_header Host $host;
         }
       }
-
-      # HTTPS for miro.zip, reached via the stream block's "default" route
-      # above (127.0.0.1:8443). Commented out until certbot-issue-job.yaml
-      # has actually written a cert - nginx refuses to start at all if
-      # ssl_certificate points at a file that doesn't exist yet, which
-      # would take down the :443 passthrough for Home Assistant too.
-      #
-      # server {
-      #   listen 127.0.0.1:8443 ssl;
-      #   server_name miro.zip;
-      #   ssl_certificate /etc/letsencrypt/live/miro.zip/fullchain.pem;
-      #   ssl_certificate_key /etc/letsencrypt/live/miro.zip/privkey.pem;
-      #
-      #   location /api/ {
-      #     proxy_pass http://site-counters.site-counters.svc.cluster.local:8080;
-      #     proxy_set_header Host $host;
-      #     proxy_set_header Origin $http_origin;
-      #   }
-      #
-      #   location / {
-      #     proxy_pass http://web-server.web-server.svc.cluster.local:80;
-      #     proxy_set_header Host $host;
-      #   }
-      # }
     }
