@@ -1,0 +1,125 @@
+# SeaweedFS CSI driver - lets apps consume SeaweedFS storage as ordinary
+# PVCs. Deliberately excludes pi3-1: that node is already carrying
+# SeaweedFS's master/filer/volume-server plus matter-server/otbr/zigbee-bridge
+# on only 905Mi RAM (see today's memory crisis in plan.md), and this chart
+# deploys a DaemonSet on every included node (CSI node driver + a separate
+# mount-service DaemonSet), each with several sidecar containers - real
+# additional overhead per node. None of the apps that will use SeaweedFS
+# storage (home-assistant, web-server, site-counters, nas-samba) have a
+# hardware reason to run on pi3-1, so they're relocated to pi4/pi3-2 instead.
+#
+# Every container below gets an explicit resource limit - the chart's
+# defaults are unbounded (resources: {}), which is exactly the kind of
+# unconstrained footprint that caused today's crisis with Flux and Longhorn.
+apiVersion: helm.toolkit.fluxcd.io/v2
+kind: HelmRelease
+metadata:
+  name: seaweedfs-csi-driver
+  namespace: seaweedfs
+spec:
+  interval: 1h
+  chart:
+    spec:
+      chart: seaweedfs-csi-driver
+      version: "0.2.x"
+      sourceRef:
+        kind: HelmRepository
+        name: seaweedfs-csi-driver
+        namespace: seaweedfs
+  values:
+    seaweedfsFiler: "seaweedfs-filer.seaweedfs.svc.cluster.local:8888"
+    storageClassName: seaweedfs-storage
+    isDefaultStorageClass: false
+
+    controller:
+      replicas: 1
+      affinity:
+        nodeAffinity:
+          requiredDuringSchedulingIgnoredDuringExecution:
+            nodeSelectorTerms:
+              - matchExpressions:
+                  - key: kubernetes.io/hostname
+                    operator: In
+                    values: ["pi4", "pi3-2"]
+      resources:
+        requests:
+          cpu: 25m
+          memory: 32Mi
+        limits:
+          memory: 96Mi
+
+    csiProvisioner:
+      resources:
+        requests:
+          cpu: 25m
+          memory: 32Mi
+        limits:
+          memory: 96Mi
+
+    csiResizer:
+      resources:
+        requests:
+          cpu: 25m
+          memory: 32Mi
+        limits:
+          memory: 96Mi
+
+    csiAttacher:
+      resources:
+        requests:
+          cpu: 25m
+          memory: 32Mi
+        limits:
+          memory: 96Mi
+
+    csiNodeDriverRegistrar:
+      resources:
+        requests:
+          cpu: 25m
+          memory: 24Mi
+        limits:
+          memory: 64Mi
+
+    csiLivenessProbe:
+      resources:
+        requests:
+          cpu: 10m
+          memory: 16Mi
+        limits:
+          memory: 32Mi
+
+    node:
+      enabled: true
+      affinity:
+        nodeAffinity:
+          requiredDuringSchedulingIgnoredDuringExecution:
+            nodeSelectorTerms:
+              - matchExpressions:
+                  - key: kubernetes.io/hostname
+                    operator: In
+                    values: ["pi4", "pi3-2"]
+
+    mountService:
+      enabled: true
+      affinity:
+        nodeAffinity:
+          requiredDuringSchedulingIgnoredDuringExecution:
+            nodeSelectorTerms:
+              - matchExpressions:
+                  - key: kubernetes.io/hostname
+                    operator: In
+                    values: ["pi4", "pi3-2"]
+      resources:
+        requests:
+          cpu: 50m
+          memory: 64Mi
+        limits:
+          memory: 192Mi
+
+    seaweedfsCsiPlugin:
+      resources:
+        requests:
+          cpu: 50m
+          memory: 64Mi
+        limits:
+          memory: 160Mi

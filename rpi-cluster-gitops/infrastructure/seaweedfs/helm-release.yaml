@@ -1,0 +1,151 @@
+# Replaces Longhorn entirely as the cluster's storage layer (see plan.md).
+# Master + filer are pinned to pi3-1 rather than pi4: pi4 already carries the
+# k3s control-plane and Home Assistant itself (~800Mi combined) on a 1.8GB
+# node, so it has less real headroom than its total RAM suggests despite
+# having more RAM than the Pi 3s. Volume servers run once per physical disk -
+# pi4 unavoidably hosts three (its two new SSDs plus the original WD "fast
+# storage" disk), since data has to live where the disk physically is.
+apiVersion: helm.toolkit.fluxcd.io/v2
+kind: HelmRelease
+metadata:
+  name: seaweedfs
+  namespace: seaweedfs
+spec:
+  interval: 1h
+  chart:
+    spec:
+      chart: seaweedfs
+      version: "4.x"
+      sourceRef:
+        kind: HelmRepository
+        name: seaweedfs
+        namespace: seaweedfs
+  values:
+    global:
+      seaweedfs:
+        # replicationPlacement 001 = 1 extra copy on another server in the
+        # same rack - i.e. every file gets a second copy on a different node.
+        enableReplication: true
+        replicationPlacement: "001"
+
+    master:
+      replicas: 1
+      nodeSelector: |
+        kubernetes.io/hostname: pi3-1
+      data:
+        type: hostPath
+        hostPathPrefix: /mnt/longhorn-disk1/seaweedfs-master
+      logs:
+        type: hostPath
+        hostPathPrefix: /mnt/longhorn-disk1/seaweedfs-master
+      resources:
+        requests:
+          cpu: 50m
+          memory: 64Mi
+        limits:
+          memory: 160Mi
+
+    filer:
+      replicas: 1
+      nodeSelector: |
+        kubernetes.io/hostname: pi3-1
+      data:
+        type: hostPath
+        hostPathPrefix: /mnt/longhorn-disk1/seaweedfs-filer
+      resources:
+        requests:
+          cpu: 50m
+          memory: 64Mi
+        limits:
+          memory: 192Mi
+
+    # Disable the single default volume group in favor of one named group per
+    # physical disk, each pinned to the node that disk is actually on.
+    #
+    # STAGED ROLLOUT: after today's memory crisis (deploying all 5 volume
+    # servers plus master+filer at once tipped pi4 and pi3-1 into severe swap
+    # thrashing requiring physical power cycles), bring these up ONE AT A TIME
+    # - verify `free -h` shows real headroom on the target node after each
+    # addition before uncommenting the next. Start with nothing here; add
+    # pi3-1-disk1 first (same node as master/filer, so its true combined
+    # footprint is visible immediately), then pi4-disk1, pi4-disk2, pi4-wd,
+    # and pi3-2-disk1 last.
+    volume:
+      enabled: false
+
+    volumes:
+      pi3-1-disk1:
+        replicas: 1
+        nodeSelector: |
+          kubernetes.io/hostname: pi3-1
+        dataDirs:
+          - name: data1
+            type: hostPath
+            hostPathPrefix: /mnt/longhorn-disk1
+            maxVolumes: 0
+        resources:
+          requests:
+            cpu: 50m
+            memory: 64Mi
+          limits:
+            memory: 160Mi
+      pi3-2-disk1:
+        replicas: 1
+        nodeSelector: |
+          kubernetes.io/hostname: pi3-2
+        dataDirs:
+          - name: data1
+            type: hostPath
+            hostPathPrefix: /mnt/longhorn-disk1
+            maxVolumes: 0
+        resources:
+          requests:
+            cpu: 50m
+            memory: 64Mi
+          limits:
+            memory: 160Mi
+      pi4-disk1:
+        replicas: 1
+        nodeSelector: |
+          kubernetes.io/hostname: pi4
+        dataDirs:
+          - name: data1
+            type: hostPath
+            hostPathPrefix: /mnt/longhorn-disk1
+            maxVolumes: 0
+        resources:
+          requests:
+            cpu: 50m
+            memory: 64Mi
+          limits:
+            memory: 160Mi
+      pi4-disk2:
+        replicas: 1
+        nodeSelector: |
+          kubernetes.io/hostname: pi4
+        dataDirs:
+          - name: data1
+            type: hostPath
+            hostPathPrefix: /mnt/longhorn-disk2
+            maxVolumes: 0
+        resources:
+          requests:
+            cpu: 50m
+            memory: 64Mi
+          limits:
+            memory: 160Mi
+      pi4-wd:
+        replicas: 1
+        nodeSelector: |
+          kubernetes.io/hostname: pi4
+        dataDirs:
+          - name: data1
+            type: hostPath
+            hostPathPrefix: /mnt/fast-storage
+            maxVolumes: 0
+        resources:
+          requests:
+            cpu: 50m
+            memory: 64Mi
+          limits:
+            memory: 160Mi

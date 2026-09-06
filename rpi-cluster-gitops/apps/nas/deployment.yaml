@@ -20,7 +20,7 @@ spec:
         app: nas-samba
     spec:
       nodeSelector:
-        node-role: worker
+        kubernetes.io/hostname: pi3-1 # hostPath data lives on this specific node's disk now that Longhorn is gone
       containers:
         - name: samba
           image: dperson/samba
@@ -38,5 +38,6 @@ spec:
               mountPath: /share
       volumes:
         - name: data
-          persistentVolumeClaim:
-            claimName: nas-data
+          hostPath:
+            path: /var/lib/nas/share
+            type: Directory

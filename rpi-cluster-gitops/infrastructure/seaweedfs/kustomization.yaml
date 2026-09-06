@@ -4,4 +4,5 @@ resources:
   - namespace.yaml
   - helm-repository.yaml
   - helm-release.yaml
-  - storage-classes.yaml
+  - csi-helm-repository.yaml
+  - csi-helm-release.yaml

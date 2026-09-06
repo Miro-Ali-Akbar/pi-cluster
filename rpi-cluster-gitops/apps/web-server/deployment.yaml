@@ -16,7 +16,7 @@ spec:
         app: web-server
     spec:
       nodeSelector:
-        node-role: worker # moved off pi4 to relieve its chronic memory pressure - Longhorn attaches the fast-ssd-backed PVC over the network regardless of which node the pod runs on
+        kubernetes.io/hostname: pi3-1 # hostPath data lives on this specific node's disk now that Longhorn is gone
       # git-sync writes as its default uid/gid (65533) - fsGroup makes the
       # PVC group-writable to it. Checked-out files stay world-readable
       # (git's default), so nginx's worker (uid 101, not in that group)
@@ -60,8 +60,9 @@ spec:
               mountPath: /git
       volumes:
         - name: data
-          persistentVolumeClaim:
-            claimName: web-server-data
+          hostPath:
+            path: /var/lib/web-server/data
+            type: Directory
         - name: conf
           configMap:
             name: web-server-conf

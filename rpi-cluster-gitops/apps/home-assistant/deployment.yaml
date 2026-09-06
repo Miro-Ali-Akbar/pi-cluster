@@ -64,8 +64,9 @@ spec:
               readOnly: true
       volumes:
         - name: config
-          persistentVolumeClaim:
-            claimName: home-assistant-config
+          hostPath:
+            path: /var/lib/home-assistant/config
+            type: Directory
         - name: dev
           hostPath:
             path: /dev
