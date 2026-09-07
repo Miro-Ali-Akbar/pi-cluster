@@ -16,7 +16,7 @@ spec:
         app: web-server
     spec:
       nodeSelector:
-        kubernetes.io/hostname: pi3-1 # hostPath data lives on this specific node's disk now that Longhorn is gone
+        kubernetes.io/hostname: pi3-2 # pi3-1 has no SeaweedFS CSI driver (kept off it to protect its tight memory headroom)
       # git-sync writes as its default uid/gid (65533) - fsGroup makes the
       # PVC group-writable to it. Checked-out files stay world-readable
       # (git's default), so nginx's worker (uid 101, not in that group)
@@ -60,9 +60,8 @@ spec:
               mountPath: /git
       volumes:
         - name: data
-          hostPath:
-            path: /var/lib/web-server/data
-            type: Directory
+          persistentVolumeClaim:
+            claimName: web-server-data
         - name: conf
           configMap:
             name: web-server-conf

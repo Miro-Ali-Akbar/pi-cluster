@@ -4,6 +4,7 @@ resources:
   - namespace.yaml
   - deployment.yaml
   - service.yaml
+  - backup-pvc.yaml
   - backup-cronjob.yaml
   - certbot-hooks-configmap.yaml
   - certbot-rbac.yaml

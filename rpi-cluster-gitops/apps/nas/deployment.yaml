@@ -20,7 +20,7 @@ spec:
         app: nas-samba
     spec:
       nodeSelector:
-        kubernetes.io/hostname: pi3-1 # hostPath data lives on this specific node's disk now that Longhorn is gone
+        kubernetes.io/hostname: pi3-2 # pi3-1 has no SeaweedFS CSI driver (kept off it to protect its tight memory headroom)
       containers:
         - name: samba
           image: dperson/samba
@@ -38,6 +38,5 @@ spec:
               mountPath: /share
       volumes:
         - name: data
-          hostPath:
-            path: /var/lib/nas/share
-            type: Directory
+          persistentVolumeClaim:
+            claimName: nas-data

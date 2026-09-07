@@ -16,7 +16,7 @@ spec:
         app: site-counters
     spec:
       nodeSelector:
-        kubernetes.io/hostname: pi3-1 # hostPath data lives on this specific node's disk now that Longhorn is gone
+        kubernetes.io/hostname: pi3-2 # pi3-1 has no SeaweedFS CSI driver (kept off it to protect its tight memory headroom)
       containers:
         - name: counters
           image: python:3.12-alpine
@@ -44,6 +44,5 @@ spec:
           configMap:
             name: site-counters-app
         - name: data
-          hostPath:
-            path: /var/lib/site-counters/data
-            type: Directory
+          persistentVolumeClaim:
+            claimName: site-counters-data

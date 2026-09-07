@@ -1,11 +1,10 @@
 # Mirrors Home Assistant's own backup files (from its "Automatic backups"
-# feature, configured in the UI - see rpi-cluster-gitops README) to a second
-# directory every 6 hours. Longhorn (which previously let this land on a
-# separate physical disk on pi3-1) was removed for resource reasons - both
-# paths are hostPath on pi4 for now, which only guards against accidental
-# deletion/corruption within HA's own config, not a physical disk failure.
-# Revisit with a real off-node copy (e.g. rsync over SSH to another node)
-# when resilience work resumes.
+# feature, configured in the UI - see rpi-cluster-gitops README) onto a
+# SeaweedFS-backed PVC every 6 hours - genuine redundancy across different
+# physical disks/nodes, without touching HA's own live config (which stays
+# on hostPath: bulk small-file writes through the FUSE mount proved
+# unreliable there, but this job's periodic "copy the newest backup file(s)"
+# write is much lighter and a safe fit for SeaweedFS).
 #
 # --delete mirrors HA's own retention (set in its Automatic backups UI) onto
 # the destination, rather than requiring a second, separately-managed
@@ -55,6 +54,5 @@ spec:
                 path: /var/lib/home-assistant/config
                 type: Directory
             - name: backups
-              hostPath:
-                path: /var/lib/home-assistant/backups-mirror
-                type: DirectoryOrCreate
+              persistentVolumeClaim:
+                claimName: home-assistant-backups

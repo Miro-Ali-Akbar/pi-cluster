@@ -1,0 +1,16 @@
+# Unlike Longhorn, a single SeaweedFS volume isn't capped to one disk's
+# size - it distributes across all registered volume servers, so this can
+# actually use close to the full replicated pool capacity (~570GB usable
+# across the 5-disk, 2x-replicated pool), not just one disk's worth.
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: nas-data
+  namespace: nas
+spec:
+  accessModes:
+    - ReadWriteOnce
+  storageClassName: seaweedfs-storage
+  resources:
+    requests:
+      storage: 400Gi
