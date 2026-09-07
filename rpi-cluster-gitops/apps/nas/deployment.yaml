@@ -28,7 +28,18 @@ spec:
       containers:
         - name: samba
           image: dperson/samba
-          args: ["-s", "share;/share;yes;no;yes;all"]
+          # Guest access (no password) worked from Linux/Mac but Windows
+          # blocks passwordless SMB guest logons by default - real
+          # credentials fix that and close the open-to-anyone-on-the-LAN
+          # gap. Password comes from a Secret created out-of-band (see
+          # ha-cast-toggle-key for the same pattern), never committed here.
+          args: ["-u", "Miro;$(SAMBA_PASSWORD)", "-s", "share;/share;yes;no;no;Miro"]
+          env:
+            - name: SAMBA_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: nas-samba-credentials
+                  key: password
           ports:
             - containerPort: 445
           resources:
