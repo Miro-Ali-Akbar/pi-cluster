@@ -18,6 +18,19 @@ metadata:
   namespace: seaweedfs
 spec:
   interval: 1h
+  # mountService's DaemonSet intentionally uses OnDelete (see values below) so
+  # it never auto-rolls on a chart change - pods only pick up new mount
+  # settings once manually deleted, on purpose, to avoid disrupting active
+  # mounts mid-upgrade. Helm's default post-upgrade "wait for rollout" has
+  # no way to know that's expected, so it times out and fails every single
+  # upgrade regardless of what changed. disableWait skips that wait; the
+  # actual resources still apply correctly (verified separately), and
+  # consumer pods just need a manual restart afterward to pick up changes -
+  # which they'd need anyway given OnDelete.
+  install:
+    disableWait: true
+  upgrade:
+    disableWait: true
   chart:
     spec:
       chart: seaweedfs-csi-driver
@@ -30,6 +43,22 @@ spec:
     seaweedfsFiler: "seaweedfs-filer.seaweedfs.svc.cluster.local:8888"
     storageClassName: seaweedfs-storage
     isDefaultStorageClass: false
+
+    # Default concurrentWriters/Readers (128 each) are tuned for real
+    # servers, not a Pi 3 with ~900Mi RAM shared across several mounted
+    # PVCs. A bulk upload would open many simultaneous in-flight writes,
+    # each with buffers/goroutines the mount process couldn't afford -
+    # it'd get OOM-killed, leaving every pod using SeaweedFS storage on
+    # that node with a dead "transport endpoint not connected" mount until
+    # manually restarted (this is what took down the NAS, web-server, and
+    # site-counters at once). Lowering concurrency directly throttles how
+    # much a bulk transfer can pile on at once. Deliberately leaving the
+    # mount cache at its default (disabled) rather than adding one - with
+    # multiple PVCs mounted per node, even a modest per-mount cache could
+    # add up past the mount service's own memory limit and cause the exact
+    # OOM this is meant to prevent.
+    concurrentWriters: 8
+    concurrentReaders: 8
 
     controller:
       replicas: 1
