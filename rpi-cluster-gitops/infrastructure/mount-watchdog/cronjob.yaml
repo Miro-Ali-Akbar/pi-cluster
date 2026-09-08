@@ -1,0 +1,63 @@
+# Watches for the "transport endpoint not connected" / "socket not
+# connected" failure that happens when SeaweedFS's FUSE mount process
+# crashes (e.g. under a heavy bulk upload) and restarts: the mount point
+# used by an already-running pod goes stale, but the pod itself keeps
+# reporting Running/Ready since its own process never crashed.
+#
+# A plain liveness probe can't fix this: it only restarts the failing
+# *container*, but kubelet sets up volume mounts once per *pod* at
+# creation time - restarting a container inside an already-running pod
+# reuses the same (still-dead) mount. Only deleting the whole pod, so the
+# Deployment recreates it fresh and the CSI driver re-establishes the
+# mount from scratch, actually clears it - the same thing done manually
+# to recover the NAS/web-server/site-counters outage this was written
+# after.
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: mount-watchdog
+  namespace: mount-watchdog
+spec:
+  schedule: "*/5 * * * *"
+  concurrencyPolicy: Forbid
+  jobTemplate:
+    spec:
+      template:
+        spec:
+          serviceAccountName: mount-watchdog
+          restartPolicy: OnFailure
+          containers:
+            - name: watchdog
+              image: alpine/k8s:1.31.1
+              command:
+                - /bin/sh
+                - -c
+                - |
+                  set -u
+                  check_and_heal() {
+                    local ns="$1" label="$2" mount_path="$3" container="${4:-}"
+                    local pod
+                    pod=$(kubectl get pods -n "$ns" -l "$label" -o jsonpath='{.items[0].metadata.name}' 2>/dev/null)
+                    if [ -z "$pod" ]; then
+                      echo "[$ns] no pod found for $label, skipping"
+                      return
+                    fi
+                    local c_arg=""
+                    [ -n "$container" ] && c_arg="-c $container"
+                    if kubectl exec -n "$ns" "$pod" $c_arg -- stat "$mount_path" >/dev/null 2>&1; then
+                      echo "[$ns/$pod] mount healthy"
+                    else
+                      echo "[$ns/$pod] mount check FAILED - deleting pod to force a fresh mount"
+                      kubectl delete pod -n "$ns" "$pod" --force --grace-period=0
+                    fi
+                  }
+
+                  check_and_heal nas app=nas-samba /share
+                  check_and_heal web-server app=web-server /git nginx
+                  check_and_heal site-counters app=site-counters /data
+              resources:
+                requests:
+                  cpu: 25m
+                  memory: 32Mi
+                limits:
+                  memory: 64Mi

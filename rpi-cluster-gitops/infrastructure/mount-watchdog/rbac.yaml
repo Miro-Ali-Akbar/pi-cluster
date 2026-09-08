@@ -1,0 +1,91 @@
+# Least-privilege access into just the 3 namespaces with SeaweedFS-backed
+# mounts that can go stale ("transport endpoint not connected") - get/list
+# to check pod health, exec to test the mount, delete to force a clean
+# recreate (the only thing that actually clears a stale pod-level mount;
+# see cronjob.yaml for why a plain liveness probe can't do this).
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: mount-watchdog
+  namespace: mount-watchdog
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: mount-watchdog-heal
+  namespace: nas
+rules:
+  - apiGroups: [""]
+    resources: ["pods"]
+    verbs: ["get", "list", "delete"]
+  - apiGroups: [""]
+    resources: ["pods/exec"]
+    verbs: ["create"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: mount-watchdog-heal
+  namespace: nas
+subjects:
+  - kind: ServiceAccount
+    name: mount-watchdog
+    namespace: mount-watchdog
+roleRef:
+  kind: Role
+  name: mount-watchdog-heal
+  apiGroup: rbac.authorization.k8s.io
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: mount-watchdog-heal
+  namespace: web-server
+rules:
+  - apiGroups: [""]
+    resources: ["pods"]
+    verbs: ["get", "list", "delete"]
+  - apiGroups: [""]
+    resources: ["pods/exec"]
+    verbs: ["create"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: mount-watchdog-heal
+  namespace: web-server
+subjects:
+  - kind: ServiceAccount
+    name: mount-watchdog
+    namespace: mount-watchdog
+roleRef:
+  kind: Role
+  name: mount-watchdog-heal
+  apiGroup: rbac.authorization.k8s.io
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: mount-watchdog-heal
+  namespace: site-counters
+rules:
+  - apiGroups: [""]
+    resources: ["pods"]
+    verbs: ["get", "list", "delete"]
+  - apiGroups: [""]
+    resources: ["pods/exec"]
+    verbs: ["create"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: mount-watchdog-heal
+  namespace: site-counters
+subjects:
+  - kind: ServiceAccount
+    name: mount-watchdog
+    namespace: mount-watchdog
+roleRef:
+  kind: Role
+  name: mount-watchdog-heal
+  apiGroup: rbac.authorization.k8s.io
