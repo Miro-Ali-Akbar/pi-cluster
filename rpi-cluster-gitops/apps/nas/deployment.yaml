@@ -32,6 +32,22 @@ spec:
       # not just other pods - same reasoning as HA/matter-server's hostNetwork.
       hostNetwork: true
       dnsPolicy: ClusterFirstWithHostNet
+      # Every time the SeaweedFS FUSE mount gets freshly (re-)established
+      # (after a crash, a watchdog-triggered pod recreate, etc.) the root
+      # of /share has intermittently come back mode 0750 owned root:root
+      # instead of the real backend permission (0777, verified directly
+      # via the filer's HTTP API) - smbd then can't chdir into it
+      # ("Permission denied") until someone notices and runs `chmod 0777
+      # /share` by hand. Running that chmod here, as root, before smbd
+      # ever starts, makes every future recreate self-healing instead of
+      # needing manual intervention.
+      initContainers:
+        - name: fix-share-permissions
+          image: dperson/samba
+          command: ["chmod", "0777", "/share"]
+          volumeMounts:
+            - name: data
+              mountPath: /share
       containers:
         - name: samba
           image: dperson/samba
