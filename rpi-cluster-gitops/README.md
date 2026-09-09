@@ -72,6 +72,23 @@ own OS instead and would be silently lost if a node were reflashed:
   sudo systemctl set-property kubepods.slice IOReadBandwidthMax="/dev/sda 20M" IOWriteBandwidthMax="/dev/sda 20M" --runtime
   ```
 
+- **`.real-disk-marker` files** - a `.real-disk-marker` file must exist at
+  the root of every physical disk SeaweedFS's volume servers use
+  (`/mnt/longhorn-disk1`, `/mnt/longhorn-disk2`, `/mnt/fast-storage` on
+  whichever nodes have them). Added after a USB SSD disconnected from pi4
+  at runtime and Kubernetes' hostPath silently created an empty directory
+  on the SD card in its place - the volume server kept running and wrote
+  real NAS/web-server data there for hours with nothing visibly wrong,
+  until the SD card itself buckled under the unexpected load and took
+  down the node's own k3s API server. Every volume server pod now has a
+  `verify-real-disk` initContainer (`infrastructure/seaweedfs/helm-release.yaml`)
+  that refuses to start if this marker is missing, on the theory that a
+  freshly-created fallback directory won't have it. To reproduce on a
+  reflashed node or a newly-added disk:
+  ```
+  sudo touch /mnt/<disk-path>/.real-disk-marker
+  ```
+
 ## Known gaps
 
 - No Prometheus Operator/Alertmanager installed — Longhorn's alerting

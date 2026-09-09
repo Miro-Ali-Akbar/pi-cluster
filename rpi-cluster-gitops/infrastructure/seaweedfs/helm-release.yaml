@@ -91,12 +91,31 @@ spec:
     volume:
       enabled: false
 
+    # Every group below carries the same "verify-real-disk" initContainer.
+    # A USB SSD disconnecting at runtime (as happened to pi4's disk1 and wd
+    # drives) doesn't fail the pod - Kubernetes' hostPath just silently
+    # creates a plain empty directory on the node's root filesystem (the SD
+    # card) in its place, and the volume server happily starts writing real
+    # NAS/web-server data there instead, with nothing visibly wrong until
+    # the SD card itself buckles under the unexpected load. A one-time
+    # ".real-disk-marker" file placed on each actual physical disk (not
+    # committed here - see README's "Host-level configuration" section) lets
+    # every pod verify it's looking at the real disk before the main
+    # container ever starts; if the marker's missing, it refuses to start
+    # instead of silently writing to the wrong place.
     volumes:
       pi3-1-disk1:
         replicas: 1
         rack: pi3-rack
         nodeSelector: |
           kubernetes.io/hostname: pi3-1
+        initContainers: |
+          - name: verify-real-disk
+            image: busybox
+            command: ["sh", "-c", "test -f /data1/.real-disk-marker || (echo 'FATAL: /data1 has no .real-disk-marker - the physical disk is likely disconnected and this would silently fall back to writing on the SD card. Refusing to start.' >&2 && exit 1)"]
+            volumeMounts:
+              - name: data1
+                mountPath: /data1
         dataDirs:
           - name: data1
             type: hostPath
@@ -113,6 +132,13 @@ spec:
         rack: pi3-rack
         nodeSelector: |
           kubernetes.io/hostname: pi3-2
+        initContainers: |
+          - name: verify-real-disk
+            image: busybox
+            command: ["sh", "-c", "test -f /data1/.real-disk-marker || (echo 'FATAL: /data1 has no .real-disk-marker - the physical disk is likely disconnected and this would silently fall back to writing on the SD card. Refusing to start.' >&2 && exit 1)"]
+            volumeMounts:
+              - name: data1
+                mountPath: /data1
         dataDirs:
           - name: data1
             type: hostPath
@@ -129,6 +155,13 @@ spec:
         rack: pi4-rack
         nodeSelector: |
           kubernetes.io/hostname: pi4
+        initContainers: |
+          - name: verify-real-disk
+            image: busybox
+            command: ["sh", "-c", "test -f /data1/.real-disk-marker || (echo 'FATAL: /data1 has no .real-disk-marker - the physical disk is likely disconnected and this would silently fall back to writing on the SD card. Refusing to start.' >&2 && exit 1)"]
+            volumeMounts:
+              - name: data1
+                mountPath: /data1
         dataDirs:
           - name: data1
             type: hostPath
@@ -145,6 +178,13 @@ spec:
         rack: pi4-rack
         nodeSelector: |
           kubernetes.io/hostname: pi4
+        initContainers: |
+          - name: verify-real-disk
+            image: busybox
+            command: ["sh", "-c", "test -f /data1/.real-disk-marker || (echo 'FATAL: /data1 has no .real-disk-marker - the physical disk is likely disconnected and this would silently fall back to writing on the SD card. Refusing to start.' >&2 && exit 1)"]
+            volumeMounts:
+              - name: data1
+                mountPath: /data1
         dataDirs:
           - name: data1
             type: hostPath
@@ -161,6 +201,13 @@ spec:
         rack: pi4-rack
         nodeSelector: |
           kubernetes.io/hostname: pi4
+        initContainers: |
+          - name: verify-real-disk
+            image: busybox
+            command: ["sh", "-c", "test -f /data1/.real-disk-marker || (echo 'FATAL: /data1 has no .real-disk-marker - the physical disk is likely disconnected and this would silently fall back to writing on the SD card. Refusing to start.' >&2 && exit 1)"]
+            volumeMounts:
+              - name: data1
+                mountPath: /data1
         dataDirs:
           - name: data1
             type: hostPath
