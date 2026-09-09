@@ -57,8 +57,16 @@ spec:
     # multiple PVCs mounted per node, even a modest per-mount cache could
     # add up past the mount service's own memory limit and cause the exact
     # OOM this is meant to prevent.
-    concurrentWriters: 8
-    concurrentReaders: 8
+    #
+    # Dropped further to 2 after 8 still wasn't low enough: a large-file
+    # transfer to the NAS PVC still drove pi3-2's load average past 14 and
+    # caused a volume-assign RPC to the SeaweedFS master to hit
+    # DeadlineExceeded, crashing the mount process mid-write (it auto-
+    # restarted, but the in-flight SMB write got stuck forever on the dead
+    # connection). Priority here is reliability over speed - a slow
+    # transfer that completes beats a fast one that wedges the node.
+    concurrentWriters: 2
+    concurrentReaders: 2
 
     controller:
       replicas: 1
