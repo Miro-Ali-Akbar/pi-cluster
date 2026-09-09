@@ -23,10 +23,16 @@ spec:
   values:
     global:
       seaweedfs:
-        # replicationPlacement 001 = 1 extra copy on another server in the
-        # same rack - i.e. every file gets a second copy on a different node.
+        # replicationPlacement 010 = 1 extra copy on another RACK (not just
+        # another node). pi4 is its own rack ("pi4-rack") and the two Pi 3s
+        # share "pi3-rack", so this guarantees every replicated file always
+        # has one copy on pi4 - the strongest node, with a real SATA SSD
+        # bus - rather than leaving replica placement between pi3-2 and
+        # pi3-1 to chance (which is how a bulk NAS transfer ended up with
+        # both copies stuck on the two weakest, USB2-bottlenecked nodes).
+        # Was 001 (extra copy on another node, same rack) before this.
         enableReplication: true
-        replicationPlacement: "001"
+        replicationPlacement: "010"
 
     master:
       replicas: 1
@@ -47,6 +53,12 @@ spec:
 
     filer:
       replicas: 1
+      # Prefer pi4's rack when there's a choice of which replica to read
+      # from or write to first - it's the fastest node with the least
+      # contention, so steering traffic there first (before falling back
+      # to the pi3 rack) helps even for volumes that predate this change.
+      dataCenter: ""
+      rack: pi4-rack
       nodeSelector: |
         kubernetes.io/hostname: pi3-1
       data:
@@ -76,6 +88,7 @@ spec:
     volumes:
       pi3-1-disk1:
         replicas: 1
+        rack: pi3-rack
         nodeSelector: |
           kubernetes.io/hostname: pi3-1
         dataDirs:
@@ -91,6 +104,7 @@ spec:
             memory: 160Mi
       pi3-2-disk1:
         replicas: 1
+        rack: pi3-rack
         nodeSelector: |
           kubernetes.io/hostname: pi3-2
         dataDirs:
@@ -106,6 +120,7 @@ spec:
             memory: 160Mi
       pi4-disk1:
         replicas: 1
+        rack: pi4-rack
         nodeSelector: |
           kubernetes.io/hostname: pi4
         dataDirs:
@@ -121,6 +136,7 @@ spec:
             memory: 160Mi
       pi4-disk2:
         replicas: 1
+        rack: pi4-rack
         nodeSelector: |
           kubernetes.io/hostname: pi4
         dataDirs:
@@ -136,6 +152,7 @@ spec:
             memory: 160Mi
       pi4-wd:
         replicas: 1
+        rack: pi4-rack
         nodeSelector: |
           kubernetes.io/hostname: pi4
         dataDirs:

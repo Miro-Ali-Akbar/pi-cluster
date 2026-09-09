@@ -19,8 +19,15 @@ spec:
       labels:
         app: nas-samba
     spec:
+      # Moved off pi3-2: the FUSE mount client (weed mount, which does all
+      # the write chunking/hashing) runs on whichever node hosts this pod,
+      # and pi3-2 was doing that PLUS being an SMB server PLUS hosting
+      # web-server/site-counters PLUS one of the two data replicas - a
+      # bulk transfer stacked all of that onto one Pi 3 and drove its load
+      # average past 30. pi4 has double the RAM, a faster CPU, and nothing
+      # else competing for it.
       nodeSelector:
-        kubernetes.io/hostname: pi3-2 # pi3-1 has no SeaweedFS CSI driver (kept off it to protect its tight memory headroom)
+        kubernetes.io/hostname: pi4
       # SMB needs to be reachable from real LAN clients (phones, laptops),
       # not just other pods - same reasoning as HA/matter-server's hostNetwork.
       hostNetwork: true
