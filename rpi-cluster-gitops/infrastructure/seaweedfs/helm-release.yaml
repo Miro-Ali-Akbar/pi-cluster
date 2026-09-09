@@ -69,7 +69,13 @@ spec:
           cpu: 50m
           memory: 64Mi
         limits:
-          memory: 192Mi
+          # Was 192Mi - OOMKilled (exit 137) under combined load from a
+          # bulk NAS transfer's metadata traffic plus web-server's
+          # git-sync hardlink checks hitting the filer at the same time,
+          # which killed the in-flight write for whatever file was
+          # transferring at that moment (the transfer itself resumed fine
+          # afterward - only that one file failed).
+          memory: 384Mi
 
     # Disable the single default volume group in favor of one named group per
     # physical disk, each pinned to the node that disk is actually on.
