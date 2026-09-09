@@ -54,6 +54,15 @@ spec:
               cpu: 100m
               memory: 128Mi
             limits:
+              # cpu limit added after nas-samba (moved here to pi4) helped
+              # drive pi4's own k3s API server unresponsive during a bulk
+              # transfer - with no cpu limit at all before this, smbd could
+              # burst to consume as much CPU as the transfer demanded,
+              # directly competing with k3s-server for cycles on the one
+              # node that's also the control plane. Scoped to just this
+              # pod rather than a node-wide kubelet reservation, which
+              # would have throttled Home Assistant too.
+              cpu: 500m
               memory: 256Mi
           volumeMounts:
             - name: data
