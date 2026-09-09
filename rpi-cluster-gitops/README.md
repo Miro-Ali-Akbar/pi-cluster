@@ -46,6 +46,32 @@ unattended cloud-init/ansible-pull on a node. Not needed again unless
 re-bootstrapping from scratch; ongoing reconciliation only needs Flux's own
 read-only deploy key.
 
+## Host-level configuration (not managed by Flux)
+
+Flux only manages what's inside Kubernetes - some fixes live on the node's
+own OS instead and would be silently lost if a node were reflashed:
+
+- **Container I/O bandwidth cap** - all three nodes (pi4, pi3-1, pi3-2) have
+  a systemd drop-in at `/etc/systemd/system/kubepods.slice.d/90-io-throttle.conf`
+  capping `kubepods.slice` (every container's cgroup) to 20MB/s read+write on
+  `/dev/sda`. Added after a bulk NAS transfer repeatedly drove a node's load
+  average past 30 and crashed the SeaweedFS mount process (backend writes
+  were timing out under I/O contention) - this caps throughput at the
+  cluster level so no single transfer can saturate a node's disk bus,
+  regardless of which pod is doing the writing or what app-level throttling
+  (concurrentWriters, resource limits) is or isn't in place. To reproduce on
+  a reflashed node:
+  ```
+  sudo mkdir -p /etc/systemd/system/kubepods.slice.d
+  cat <<EOF | sudo tee /etc/systemd/system/kubepods.slice.d/90-io-throttle.conf
+  [Slice]
+  IOReadBandwidthMax=/dev/sda 20M
+  IOWriteBandwidthMax=/dev/sda 20M
+  EOF
+  sudo systemctl daemon-reload
+  sudo systemctl set-property kubepods.slice IOReadBandwidthMax="/dev/sda 20M" IOWriteBandwidthMax="/dev/sda 20M" --runtime
+  ```
+
 ## Known gaps
 
 - No Prometheus Operator/Alertmanager installed — Longhorn's alerting
