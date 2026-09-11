@@ -77,6 +77,32 @@ spec:
           # afterward - only that one file failed).
           memory: 384Mi
 
+    # S3-compatible gateway - lets us generate temporary presigned download
+    # links for individual files on the NAS (same filer-backed data, no
+    # separate storage or migration needed: a SeaweedFS "bucket" is just a
+    # top-level directory under the filer, and nas-data's PVC already is
+    # one). Auth is on and scoped to a single admin identity whose keys
+    # live in an out-of-band Secret (seaweedfs-s3-credentials, created via
+    # kubectl - never committed here, same pattern as nas-samba-credentials).
+    s3:
+      enabled: true
+      enableAuth: true
+      credentials:
+        admin:
+          existingSecret: seaweedfs-s3-credentials
+          accessKeyKey: admin_access_key_id
+          secretKeyKey: admin_secret_access_key
+      nodeSelector: |
+        kubernetes.io/hostname: pi3-1
+      logs:
+        type: emptyDir
+      resources:
+        requests:
+          cpu: 50m
+          memory: 32Mi
+        limits:
+          memory: 128Mi
+
     # Disable the single default volume group in favor of one named group per
     # physical disk, each pinned to the node that disk is actually on.
     #
