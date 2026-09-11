@@ -35,7 +35,10 @@ data:
     http {
       server {
         listen 80;
-        server_name miro.zip;
+        # file.miro.zip added here first (before its own cert exists) so
+        # certbot's HTTP-01 webroot challenge can actually be served for it -
+        # same one shared /var/www/acme webroot as miro.zip.
+        server_name miro.zip file.miro.zip;
 
         # certbot webroot HTTP-01 challenge - served in plain HTTP even
         # after HTTPS is live, since Let's Encrypt validates over :80.
