@@ -71,4 +71,24 @@ data:
           proxy_set_header Host $host;
         }
       }
+
+      # HTTPS for file.miro.zip (SeaweedFS S3 gateway - presigned temporary
+      # file-share links), same 127.0.0.1:8443 termination point as
+      # miro.zip above - own cert, own server block, picked by SNI.
+      # Host header must reach the backend unchanged: it's part of what
+      # the client signed when generating the presigned URL, so rewriting
+      # it here would break signature verification.
+      server {
+        listen 127.0.0.1:8443 ssl;
+        server_name file.miro.zip;
+        ssl_certificate /etc/letsencrypt/live/file.miro.zip/fullchain.pem;
+        ssl_certificate_key /etc/letsencrypt/live/file.miro.zip/privkey.pem;
+
+        client_max_body_size 0;
+
+        location / {
+          proxy_pass http://seaweedfs-s3.seaweedfs.svc.cluster.local:8333;
+          proxy_set_header Host $host;
+        }
+      }
     }
