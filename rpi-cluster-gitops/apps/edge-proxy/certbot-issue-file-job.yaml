@@ -1,0 +1,47 @@
+# NOT part of kustomization.yaml on purpose - this is a one-time manual
+# step (`kubectl apply -f certbot-issue-file-job.yaml`), run once
+# file.miro.zip resolves publicly and edge-proxy's nginx.conf serves the
+# ACME challenge for it (see configmap.yaml). A separate cert from
+# miro.zip's own, so this domain's renewal is independent - but the
+# existing certbot-renew-cronjob.yaml picks it up automatically anyway,
+# since `certbot renew` renews every cert in its store regardless of domain.
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: certbot-issue-file
+  namespace: edge-proxy
+spec:
+  template:
+    spec:
+      restartPolicy: Never
+      nodeSelector:
+        kubernetes.io/hostname: pi3-2 # shares edge-proxy's hostPath webroot/cert dirs
+      containers:
+        - name: certbot-issue
+          image: certbot/certbot:latest
+          command:
+            - certbot
+            - certonly
+            - --webroot
+            - -w
+            - /var/www/acme
+            - -d
+            - file.miro.zip
+            - --email
+            - miro@impactsolution.se
+            - --agree-tos
+            - --non-interactive
+          volumeMounts:
+            - name: acme-webroot
+              mountPath: /var/www/acme
+            - name: tls-certs
+              mountPath: /etc/letsencrypt
+      volumes:
+        - name: acme-webroot
+          hostPath:
+            path: /srv/acme-webroot
+            type: DirectoryOrCreate
+        - name: tls-certs
+          hostPath:
+            path: /srv/tls-certs
+            type: DirectoryOrCreate
