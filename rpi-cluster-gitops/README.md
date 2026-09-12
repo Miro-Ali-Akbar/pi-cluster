@@ -89,6 +89,35 @@ own OS instead and would be silently lost if a node were reflashed:
   sudo touch /mnt/<disk-path>/.real-disk-marker
   ```
 
+- **pi4's k3s datastore moved off the SD card, onto SSD** - k3s's own
+  SQLite-backed datastore (`/var/lib/rancher/k3s/server/db`) lived on
+  pi4's SD card by default. That card's write latency degrades badly
+  under load (a recurring root cause: leader-election sidecars on the
+  CSI driver would fail to renew their lease in time - "context deadline
+  exceeded" - and crash-loop, which in turn left long-running pods like
+  nas-samba with stale mount references, requiring a manual pod recreate
+  each time). Neither the I/O throttle above (a different device,
+  `/dev/sda`) nor `kube-reserved`/`system-reserved` (CPU/memory only)
+  protected against this, since it's specifically SD-card I/O latency
+  hurting k3s's own critical path. Fixed by relocating the real data to
+  `/mnt/longhorn-disk1/k3s-server-db` (SSD, lightly used) and bind-mounting
+  it back over the original path via `/etc/fstab`, so k3s's own
+  config/systemd unit needed no changes. The pre-move SD-card copy is kept
+  at `/var/lib/rancher/k3s/server/db.bak-sdcard` as a rollback safety net -
+  safe to delete once this has proven stable for a while. To reproduce on
+  a reflashed pi4:
+  ```
+  sudo systemctl stop k3s
+  sudo mkdir -p /mnt/longhorn-disk1/k3s-server-db
+  sudo rsync -a /var/lib/rancher/k3s/server/db/ /mnt/longhorn-disk1/k3s-server-db/
+  sudo chmod 0700 /mnt/longhorn-disk1/k3s-server-db
+  sudo mv /var/lib/rancher/k3s/server/db /var/lib/rancher/k3s/server/db.bak-sdcard
+  sudo mkdir /var/lib/rancher/k3s/server/db && sudo chmod 0700 /var/lib/rancher/k3s/server/db
+  echo "/mnt/longhorn-disk1/k3s-server-db /var/lib/rancher/k3s/server/db none bind 0 0" | sudo tee -a /etc/fstab
+  sudo mount -a
+  sudo systemctl start k3s
+  ```
+
 ## Known gaps
 
 - No Prometheus Operator/Alertmanager installed — Longhorn's alerting
