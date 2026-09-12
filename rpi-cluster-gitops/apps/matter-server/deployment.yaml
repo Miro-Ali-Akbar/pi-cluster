@@ -1,12 +1,25 @@
-# Matter server needs host networking for mDNS-based device discovery and
-# commissioning - it can't work behind a normal ClusterIP/LoadBalancer
-# Service. Pinned to pi3-1 (the worker) to keep load off the already-tight
-# Pi 4 control-plane node.
+# Migrated from home-assistant-libs/python-matter-server (deprecated/archived
+# June 2026 - Home Assistant itself moved to matter.js as of HA 9.0) to the
+# matter.js team's own matterjs-server, a documented drop-in replacement:
+# same WebSocket API on the same port, so Home Assistant's Matter
+# integration needs no reconfiguration - it just keeps talking to
+# 192.168.0.104:5580 as before.
 #
-# BLE is required to commission any brand-new, unprovisioned device (it has
-# no IP connectivity yet, so BLE is the only way to hand it Wi-Fi/Thread
-# credentials) - uses pi3-1's onboard Bluetooth (hci0) over D-Bus/BlueZ,
-# same pattern as Home Assistant's own Bluetooth passthrough.
+# Started with a FRESH data directory rather than migrating the old one:
+# the old server's fabric was already found reset/orphaned (a Sep 6 fabric
+# ID change had silently dropped every previously-commissioned device), so
+# there was nothing worth carrying over - devices need re-pairing either
+# way, and a clean slate avoids inheriting that confusion.
+#
+# Needs host networking for mDNS-based device discovery and commissioning,
+# same reasoning as before. Pinned to pi3-1 for the same physical
+# Bluetooth/Thread hardware reasons as the old deployment.
+#
+# BLE backend: uses the D-Bus/BlueZ backend (NOBLE_BINDINGS=dbus), the
+# project's own recommended option - talks to the host's bluetoothd over
+# the same /run/dbus socket already mounted for HA's own Bluetooth
+# passthrough, and crucially runs UNPRIVILEGED (unlike the old server's
+# `privileged: true`, needed there for direct HCI socket access).
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -25,19 +38,17 @@ spec:
         app: matter-server
     spec:
       nodeSelector:
-        kubernetes.io/hostname: pi3-1 # pinned by hostname, not role - depends on the Bluetooth/Thread hardware physically on this specific node
+        kubernetes.io/hostname: pi3-1
       hostNetwork: true
       dnsPolicy: ClusterFirstWithHostNet
       containers:
         - name: matter-server
-          image: ghcr.io/home-assistant-libs/python-matter-server:stable
-          args:
-            - --storage-path
-            - /data
-            - --bluetooth-adapter
-            - "0"
-          securityContext:
-            privileged: true
+          image: ghcr.io/matter-js/matterjs-server:stable
+          env:
+            - name: NOBLE_BINDINGS
+              value: "dbus"
+            - name: BLUETOOTH_ADAPTER
+              value: "0"
           resources:
             requests:
               cpu: 100m
@@ -49,10 +60,11 @@ spec:
               mountPath: /data
             - name: dbus
               mountPath: /run/dbus
+              readOnly: true
       volumes:
         - name: data
           hostPath:
-            path: /var/lib/matter-server/data
+            path: /var/lib/matterjs-server/data
             type: DirectoryOrCreate
         - name: dbus
           hostPath:
