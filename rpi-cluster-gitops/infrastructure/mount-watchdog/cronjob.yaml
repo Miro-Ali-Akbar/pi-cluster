@@ -12,6 +12,12 @@
 # mount from scratch, actually clears it - the same thing done manually
 # to recover the NAS/web-server/site-counters outage this was written
 # after.
+#
+# nas-samba's check runs AS smbuser (uid 100), not root: root can
+# successfully chdir into /share even when smbd's own long-lived worker
+# sessions can't anymore (a stale FUSE reference only visible to the
+# actual uid smbd runs as), which let real breakage slip past a
+# root-only check repeatedly before this.
 apiVersion: batch/v1
 kind: CronJob
 metadata:
@@ -35,7 +41,14 @@ spec:
                 - |
                   set -u
                   check_and_heal() {
-                    local ns="$1" label="$2" mount_path="$3" container="${4:-}"
+                    # check_user (5th arg): when set, checks as THAT user via
+                    # su instead of a plain root stat. Needed for nas-samba -
+                    # root can chdir into /share even when smbd's own
+                    # long-lived worker sessions (uid 100) can't anymore
+                    # (stale FUSE reference), so a root-only check has
+                    # repeatedly missed real breakage that only shows up to
+                    # the actual smbd worker's own uid.
+                    local ns="$1" label="$2" mount_path="$3" container="${4:-}" check_user="${5:-}"
                     local pod
                     pod=$(kubectl get pods -n "$ns" -l "$label" -o jsonpath='{.items[0].metadata.name}' 2>/dev/null)
                     if [ -z "$pod" ]; then
@@ -44,7 +57,15 @@ spec:
                     fi
                     local c_arg=""
                     [ -n "$container" ] && c_arg="-c $container"
-                    if kubectl exec -n "$ns" "$pod" $c_arg -- stat "$mount_path" >/dev/null 2>&1; then
+                    local check_ok=1
+                    if [ -n "$check_user" ]; then
+                      kubectl exec -n "$ns" "$pod" $c_arg -- su -s /bin/sh "$check_user" -c "cd '$mount_path'" >/dev/null 2>&1
+                      check_ok=$?
+                    else
+                      kubectl exec -n "$ns" "$pod" $c_arg -- stat "$mount_path" >/dev/null 2>&1
+                      check_ok=$?
+                    fi
+                    if [ "$check_ok" -eq 0 ]; then
                       echo "[$ns/$pod] mount healthy"
                     else
                       echo "[$ns/$pod] mount check FAILED - deleting pod to force a fresh mount"
@@ -52,7 +73,7 @@ spec:
                     fi
                   }
 
-                  check_and_heal nas app=nas-samba /share
+                  check_and_heal nas app=nas-samba /share "" smbuser
                   check_and_heal web-server app=web-server /git nginx
                   check_and_heal site-counters app=site-counters /data
               resources:
