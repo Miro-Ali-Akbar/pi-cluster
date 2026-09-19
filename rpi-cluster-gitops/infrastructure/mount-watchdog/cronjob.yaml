@@ -22,6 +22,13 @@
 # which hold a *stale* reference from before a mount change and are what
 # real clients actually hit. Only a genuine SMB connection - the same
 # thing a real client does - exercises that specific broken state.
+#
+# Every check is wrapped in `timeout` and the whole Job has
+# activeDeadlineSeconds: a real client hitting a genuinely broken mount
+# can hang in D-state (uninterruptible I/O wait) indefinitely rather than
+# erroring out - this happened once already and, left unbounded, a stuck
+# check would pile up a fresh hung process every 5 minutes, adding real
+# load-average pressure on top of whatever's already wrong.
 apiVersion: batch/v1
 kind: CronJob
 metadata:
@@ -32,6 +39,7 @@ spec:
   concurrencyPolicy: Forbid
   jobTemplate:
     spec:
+      activeDeadlineSeconds: 90
       template:
         spec:
           serviceAccountName: mount-watchdog
@@ -62,7 +70,7 @@ spec:
                     fi
                     local c_arg=""
                     [ -n "$container" ] && c_arg="-c $container"
-                    if kubectl exec -n "$ns" "$pod" $c_arg -- stat "$mount_path" >/dev/null 2>&1; then
+                    if timeout 15 kubectl exec -n "$ns" "$pod" $c_arg -- stat "$mount_path" >/dev/null 2>&1; then
                       echo "[$ns/$pod] mount healthy"
                     else
                       echo "[$ns/$pod] mount check FAILED - deleting pod to force a fresh mount"
@@ -83,7 +91,7 @@ spec:
                       return
                     fi
                     pod_ip=$(kubectl get pod -n "$ns" "$pod" -o jsonpath='{.status.podIP}' 2>/dev/null)
-                    if smbclient "//$pod_ip/share" -U "Miro%$NAS_SMB_PASSWORD" -c "ls" >/dev/null 2>&1; then
+                    if timeout 15 smbclient "//$pod_ip/share" -U "Miro%$NAS_SMB_PASSWORD" -c "ls" >/dev/null 2>&1; then
                       echo "[$ns/$pod] mount healthy (real SMB check)"
                     else
                       echo "[$ns/$pod] SMB check FAILED - deleting pod to force a fresh mount"
