@@ -29,6 +29,16 @@
 # erroring out - this happened once already and, left unbounded, a stuck
 # check would pile up a fresh hung process every 5 minutes, adding real
 # load-average pressure on top of whatever's already wrong.
+#
+# Each check retries a few times before deleting a pod, not just once:
+# a nas-samba pod that was recreated (by this same watchdog, or by any
+# other restart) seconds before a check happens to run can still be
+# finishing smbd's own user provisioning even after it logs "ready to
+# serve connections" - hit in the wild as a real client (and this
+# watchdog) getting NT_STATUS_ACCESS_DENIED against a pod barely a
+# minute old, which the watchdog then killed, restarting the exact
+# outage it exists to fix. A single retry a few seconds later is enough
+# for that window to pass; a genuinely broken mount fails every attempt.
 apiVersion: batch/v1
 kind: CronJob
 metadata:
@@ -39,7 +49,7 @@ spec:
   concurrencyPolicy: Forbid
   jobTemplate:
     spec:
-      activeDeadlineSeconds: 90
+      activeDeadlineSeconds: 150
       template:
         spec:
           serviceAccountName: mount-watchdog
@@ -60,6 +70,20 @@ spec:
                   set -u
                   apk add --no-cache samba-client >/dev/null 2>&1
 
+                  # Runs $@ up to 3 times (5s apart), succeeding on the
+                  # first pass - so a transient failure (e.g. a just-
+                  # restarted pod's daemon still finishing startup)
+                  # doesn't get treated the same as a genuinely broken
+                  # mount, which fails every attempt.
+                  retry() {
+                    local i
+                    for i in 1 2 3; do
+                      "$@" >/dev/null 2>&1 && return 0
+                      [ "$i" -lt 3 ] && sleep 5
+                    done
+                    return 1
+                  }
+
                   check_and_heal() {
                     local ns="$1" label="$2" mount_path="$3" container="${4:-}"
                     local pod
@@ -70,10 +94,10 @@ spec:
                     fi
                     local c_arg=""
                     [ -n "$container" ] && c_arg="-c $container"
-                    if timeout 15 kubectl exec -n "$ns" "$pod" $c_arg -- stat "$mount_path" >/dev/null 2>&1; then
+                    if retry timeout 15 kubectl exec -n "$ns" "$pod" $c_arg -- stat "$mount_path"; then
                       echo "[$ns/$pod] mount healthy"
                     else
-                      echo "[$ns/$pod] mount check FAILED - deleting pod to force a fresh mount"
+                      echo "[$ns/$pod] mount check FAILED after retries - deleting pod to force a fresh mount"
                       kubectl delete pod -n "$ns" "$pod" --force --grace-period=0
                     fi
                   }
@@ -91,10 +115,10 @@ spec:
                       return
                     fi
                     pod_ip=$(kubectl get pod -n "$ns" "$pod" -o jsonpath='{.status.podIP}' 2>/dev/null)
-                    if timeout 15 smbclient "//$pod_ip/share" -U "Miro%$NAS_SMB_PASSWORD" -c "ls" >/dev/null 2>&1; then
+                    if retry timeout 15 smbclient "//$pod_ip/share" -U "Miro%$NAS_SMB_PASSWORD" -c "ls"; then
                       echo "[$ns/$pod] mount healthy (real SMB check)"
                     else
-                      echo "[$ns/$pod] SMB check FAILED - deleting pod to force a fresh mount"
+                      echo "[$ns/$pod] SMB check FAILED after retries - deleting pod to force a fresh mount"
                       kubectl delete pod -n "$ns" "$pod" --force --grace-period=0
                     fi
                   }
