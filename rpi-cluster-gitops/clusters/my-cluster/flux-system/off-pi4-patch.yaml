@@ -1,0 +1,26 @@
+# Neither controller needs anything specific to pi4 - just network access
+# to the API server - so pinning them onto the worker nodes (pi3-1/pi3-2)
+# frees up a bit of pi4's tight RAM/CPU headroom. Patches on top of the
+# auto-generated gotk-components.yaml rather than hand-editing it, since
+# that file gets regenerated if `flux bootstrap` is ever re-run.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: helm-controller
+  namespace: flux-system
+spec:
+  template:
+    spec:
+      nodeSelector:
+        node-role: worker
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: kustomize-controller
+  namespace: flux-system
+spec:
+  template:
+    spec:
+      nodeSelector:
+        node-role: worker
