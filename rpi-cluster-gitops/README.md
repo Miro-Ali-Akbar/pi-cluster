@@ -118,6 +118,34 @@ own OS instead and would be silently lost if a node were reflashed:
   sudo systemctl start k3s
   ```
 
+- **pi4's containerd images/snapshots moved off the SD card, onto SSD** -
+  `/var/lib/rancher/k3s/agent/containerd` (pulled images, overlayfs
+  snapshots, per-container writable layers) grew to ~5GB and, combined
+  with everything else on a 29GB SD card, pushed the root filesystem to
+  94% full. That triggered kubelet's `FreeDiskSpaceFailed` node condition
+  repeatedly, which killed running pods (including nas-samba) under disk
+  pressure - a second, independent way this SD card was undersized for
+  the cluster's actual state, on top of the datastore I/O-latency issue
+  above. Same fix pattern: relocated to `/mnt/longhorn-disk1/k3s-agent-containerd`
+  (SSD) and bind-mounted back via `/etc/fstab`. Unlike the datastore move,
+  the pre-move SD-card copy was deleted immediately rather than kept as a
+  rollback safety net, since the whole point was reclaiming space - the
+  data is just pulled container images and container layers, trivially
+  re-creatable by k3s/containerd from scratch if ever needed. To reproduce
+  on a reflashed pi4:
+  ```
+  sudo systemctl stop k3s
+  sudo mkdir -p /mnt/longhorn-disk1/k3s-agent-containerd
+  sudo rsync -a /var/lib/rancher/k3s/agent/containerd/ /mnt/longhorn-disk1/k3s-agent-containerd/
+  sudo mv /var/lib/rancher/k3s/agent/containerd /var/lib/rancher/k3s/agent/containerd.bak-sdcard
+  sudo mkdir /var/lib/rancher/k3s/agent/containerd
+  echo "/mnt/longhorn-disk1/k3s-agent-containerd /var/lib/rancher/k3s/agent/containerd none bind 0 0" | sudo tee -a /etc/fstab
+  sudo mount -a
+  sudo systemctl start k3s
+  # once confirmed healthy:
+  sudo rm -rf /var/lib/rancher/k3s/agent/containerd.bak-sdcard
+  ```
+
 ## Known gaps
 
 - No Prometheus Operator/Alertmanager installed — Longhorn's alerting
