@@ -1,16 +1,11 @@
 # SeaweedFS CSI driver - lets apps consume SeaweedFS storage as ordinary
-# PVCs. Deliberately excludes pi3-1: that node is already carrying
-# SeaweedFS's master/filer/volume-server plus matter-server/otbr/zigbee-bridge
-# on only 905Mi RAM (see today's memory crisis in plan.md), and this chart
-# deploys a DaemonSet on every included node (CSI node driver + a separate
-# mount-service DaemonSet), each with several sidecar containers - real
-# additional overhead per node. None of the apps that will use SeaweedFS
-# storage (home-assistant, web-server, site-counters, nas-samba) have a
-# hardware reason to run on pi3-1, so they're relocated to pi4/pi3-2 instead.
+# PVCs. Excludes pi3-1 (only 905Mi RAM, already carrying SeaweedFS's
+# master/filer/volume-server plus matter-server/otbr/zigbee-bridge) - the
+# CSI node driver and mount-service DaemonSets add real per-node overhead
+# none of the SeaweedFS-consuming apps need a hardware reason to accept.
 #
-# Every container below gets an explicit resource limit - the chart's
-# defaults are unbounded (resources: {}), which is exactly the kind of
-# unconstrained footprint that caused today's crisis with Flux and Longhorn.
+# Every container below has an explicit resource limit - the chart's own
+# defaults are unbounded.
 apiVersion: helm.toolkit.fluxcd.io/v2
 kind: HelmRelease
 metadata:
@@ -18,15 +13,11 @@ metadata:
   namespace: seaweedfs
 spec:
   interval: 1h
-  # mountService's DaemonSet intentionally uses OnDelete (see values below) so
-  # it never auto-rolls on a chart change - pods only pick up new mount
-  # settings once manually deleted, on purpose, to avoid disrupting active
-  # mounts mid-upgrade. Helm's default post-upgrade "wait for rollout" has
-  # no way to know that's expected, so it times out and fails every single
-  # upgrade regardless of what changed. disableWait skips that wait; the
-  # actual resources still apply correctly (verified separately), and
-  # consumer pods just need a manual restart afterward to pick up changes -
-  # which they'd need anyway given OnDelete.
+  # mountService's DaemonSet uses OnDelete (see values below) so it never
+  # auto-rolls on a chart change and disrupts active mounts - pods pick up
+  # new settings only once manually deleted. Helm's post-upgrade rollout
+  # wait doesn't know that's expected and times out, so disableWait skips
+  # it; consumer pods need a manual restart afterward regardless.
   install:
     disableWait: true
   upgrade:
@@ -46,25 +37,12 @@ spec:
 
     # Default concurrentWriters/Readers (128 each) are tuned for real
     # servers, not a Pi 3 with ~900Mi RAM shared across several mounted
-    # PVCs. A bulk upload would open many simultaneous in-flight writes,
-    # each with buffers/goroutines the mount process couldn't afford -
-    # it'd get OOM-killed, leaving every pod using SeaweedFS storage on
-    # that node with a dead "transport endpoint not connected" mount until
-    # manually restarted (this is what took down the NAS, web-server, and
-    # site-counters at once). Lowering concurrency directly throttles how
-    # much a bulk transfer can pile on at once. Deliberately leaving the
-    # mount cache at its default (disabled) rather than adding one - with
-    # multiple PVCs mounted per node, even a modest per-mount cache could
-    # add up past the mount service's own memory limit and cause the exact
-    # OOM this is meant to prevent.
-    #
-    # Dropped further to 2 after 8 still wasn't low enough: a large-file
-    # transfer to the NAS PVC still drove pi3-2's load average past 14 and
-    # caused a volume-assign RPC to the SeaweedFS master to hit
-    # DeadlineExceeded, crashing the mount process mid-write (it auto-
-    # restarted, but the in-flight SMB write got stuck forever on the dead
-    # connection). Priority here is reliability over speed - a slow
-    # transfer that completes beats a fast one that wedges the node.
+    # PVCs - too many simultaneous in-flight writes OOM-kills the mount
+    # process, leaving every pod using that node's SeaweedFS storage with
+    # a dead "transport endpoint not connected" mount. Mount cache is left
+    # at its default (disabled) for the same reason - a per-mount cache
+    # across several PVCs on one node adds up past the mount service's own
+    # memory limit.
     concurrentWriters: 2
     concurrentReaders: 2
 

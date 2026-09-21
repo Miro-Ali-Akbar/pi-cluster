@@ -1,14 +1,9 @@
-# Mirrors Home Assistant's own backup files (from its "Automatic backups"
-# feature, configured in the UI - see rpi-cluster-gitops README) onto a
-# SeaweedFS-backed PVC every 6 hours - genuine redundancy across different
-# physical disks/nodes, without touching HA's own live config (which stays
-# on hostPath: bulk small-file writes through the FUSE mount proved
-# unreliable there, but this job's periodic "copy the newest backup file(s)"
-# write is much lighter and a safe fit for SeaweedFS).
-#
-# --delete mirrors HA's own retention (set in its Automatic backups UI) onto
-# the destination, rather than requiring a second, separately-managed
-# retention policy here.
+# Mirrors HA's own backup files (from its "Automatic backups" feature,
+# configured in the UI) onto a SeaweedFS PVC every 6 hours, for redundancy
+# across physical disks/nodes. HA's live config stays on hostPath - bulk
+# small-file writes over the FUSE mount aren't reliable enough for that.
+# --delete mirrors HA's own retention onto the destination instead of
+# managing a second retention policy here.
 apiVersion: batch/v1
 kind: CronJob
 metadata:

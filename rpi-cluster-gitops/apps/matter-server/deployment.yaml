@@ -1,25 +1,9 @@
-# Migrated from home-assistant-libs/python-matter-server (deprecated/archived
-# June 2026 - Home Assistant itself moved to matter.js as of HA 9.0) to the
-# matter.js team's own matterjs-server, a documented drop-in replacement:
-# same WebSocket API on the same port, so Home Assistant's Matter
-# integration needs no reconfiguration - it just keeps talking to
-# 192.168.0.104:5580 as before.
-#
-# Started with a FRESH data directory rather than migrating the old one:
-# the old server's fabric was already found reset/orphaned (a Sep 6 fabric
-# ID change had silently dropped every previously-commissioned device), so
-# there was nothing worth carrying over - devices need re-pairing either
-# way, and a clean slate avoids inheriting that confusion.
-#
-# Needs host networking for mDNS-based device discovery and commissioning,
-# same reasoning as before. Pinned to pi3-1 for the same physical
-# Bluetooth/Thread hardware reasons as the old deployment.
-#
-# BLE backend: uses the D-Bus/BlueZ backend (NOBLE_BINDINGS=dbus), the
-# project's own recommended option - talks to the host's bluetoothd over
-# the same /run/dbus socket already mounted for HA's own Bluetooth
-# passthrough, and crucially runs UNPRIVILEGED (unlike the old server's
-# `privileged: true`, needed there for direct HCI socket access).
+# matterjs-server exposes the same WebSocket API Home Assistant's Matter
+# integration expects on 192.168.0.104:5580. Needs hostNetwork for
+# mDNS-based device discovery/commissioning; pinned to pi3-1 for its
+# physical Bluetooth/Thread hardware. BLE backend is D-Bus/BlueZ
+# (NOBLE_BINDINGS=dbus), talking to the host's bluetoothd over /run/dbus -
+# runs unprivileged, no direct HCI socket access needed.
 apiVersion: apps/v1
 kind: Deployment
 metadata:

@@ -1,8 +1,4 @@
-# SeaweedFS-backed - genuine off-node/off-disk redundancy for HA's backups,
-# separate from the live config (which stays on hostPath: bulk small-file
-# writes through the FUSE mount proved unreliable for HA's live config, but
-# the periodic, small "copy the newest backup file(s)" write this CronJob
-# does every 6 hours is a much lighter, safer fit for it).
+# Off-node/off-disk redundancy for HA's backup files - see backup-cronjob.yaml.
 apiVersion: v1
 kind: PersistentVolumeClaim
 metadata:

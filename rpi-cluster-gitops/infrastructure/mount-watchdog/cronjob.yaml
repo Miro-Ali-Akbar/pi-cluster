@@ -1,44 +1,18 @@
-# Watches for the "transport endpoint not connected" / "socket not
-# connected" failure that happens when SeaweedFS's FUSE mount process
-# crashes (e.g. under a heavy bulk upload) and restarts: the mount point
-# used by an already-running pod goes stale, but the pod itself keeps
-# reporting Running/Ready since its own process never crashed.
+# Detects a stale SeaweedFS FUSE mount under an already-running pod (the
+# pod stays Running/Ready since its own process never crashed, so a
+# liveness probe won't catch it) and force-deletes the pod so the
+# Deployment recreates it and the CSI driver re-establishes the mount.
 #
-# A plain liveness probe can't fix this: it only restarts the failing
-# *container*, but kubelet sets up volume mounts once per *pod* at
-# creation time - restarting a container inside an already-running pod
-# reuses the same (still-dead) mount. Only deleting the whole pod, so the
-# Deployment recreates it fresh and the CSI driver re-establishes the
-# mount from scratch, actually clears it - the same thing done manually
-# to recover the NAS/web-server/site-counters outage this was written
-# after.
+# nas-samba's check uses a real SMB connection (smbclient) rather than
+# `kubectl exec`: exec always spawns a fresh process with a fresh path
+# lookup, so it can't see staleness held in smbd's own long-lived worker
+# processes - only a genuine SMB connection exercises that.
 #
-# nas-samba's check connects over the real SMB protocol (smbclient),
-# rather than `kubectl exec`-ing into the pod at all. Checking as smbuser
-# via exec (an earlier fix) still wasn't enough: `kubectl exec` always
-# spawns a brand-new process, which does a fresh path lookup and succeeds
-# against whatever mount is CURRENTLY valid - it can never see the
-# staleness in smbd's own already-running, long-lived worker processes,
-# which hold a *stale* reference from before a mount change and are what
-# real clients actually hit. Only a genuine SMB connection - the same
-# thing a real client does - exercises that specific broken state.
-#
-# Every check is wrapped in `timeout` and the whole Job has
-# activeDeadlineSeconds: a real client hitting a genuinely broken mount
-# can hang in D-state (uninterruptible I/O wait) indefinitely rather than
-# erroring out - this happened once already and, left unbounded, a stuck
-# check would pile up a fresh hung process every 5 minutes, adding real
-# load-average pressure on top of whatever's already wrong.
-#
-# Each check retries a few times before deleting a pod, not just once:
-# a nas-samba pod that was recreated (by this same watchdog, or by any
-# other restart) seconds before a check happens to run can still be
-# finishing smbd's own user provisioning even after it logs "ready to
-# serve connections" - hit in the wild as a real client (and this
-# watchdog) getting NT_STATUS_ACCESS_DENIED against a pod barely a
-# minute old, which the watchdog then killed, restarting the exact
-# outage it exists to fix. A single retry a few seconds later is enough
-# for that window to pass; a genuinely broken mount fails every attempt.
+# Every check has a timeout, the Job has activeDeadlineSeconds, and each
+# check retries a few times before deleting a pod - a mount hang can
+# block in D-state indefinitely, and a pod that just restarted can still
+# be finishing startup (e.g. smbd provisioning its user) even after
+# logging ready; a genuinely broken mount fails every retry regardless.
 apiVersion: batch/v1
 kind: CronJob
 metadata:
@@ -70,11 +44,7 @@ spec:
                   set -u
                   apk add --no-cache samba-client >/dev/null 2>&1
 
-                  # Runs $@ up to 3 times (5s apart), succeeding on the
-                  # first pass - so a transient failure (e.g. a just-
-                  # restarted pod's daemon still finishing startup)
-                  # doesn't get treated the same as a genuinely broken
-                  # mount, which fails every attempt.
+                  # Runs $@ up to 3 times (5s apart), succeeding on the first pass.
                   retry() {
                     local i
                     for i in 1 2 3; do
@@ -102,10 +72,6 @@ spec:
                     fi
                   }
 
-                  # Real SMB connection to whatever real IP the pod is
-                  # currently on (hostNetwork), exercising the actual
-                  # already-running smbd - see the top comment for why a
-                  # kubectl-exec-based check can't catch this.
                   check_nas_and_heal() {
                     local ns="nas" label="app=nas-samba"
                     local pod pod_ip

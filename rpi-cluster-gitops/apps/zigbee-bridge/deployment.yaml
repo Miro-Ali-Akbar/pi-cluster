@@ -1,10 +1,9 @@
-# The Zigbee dongle physically moved from Pi 4 (where Home Assistant runs) to
-# pi3-1. HA's hostPath-based passthrough only works on the same node the
-# device is plugged into, so instead of moving HA, we bridge the dongle over
-# the network - same pattern as OTBR bridges the Thread radio. ser2net
-# exposes the serial device as a plain TCP socket; HA's ZHA integration
-# connects to it via socket://192.168.0.104:6638 instead of a local device
-# path. hostNetwork so the TCP port is directly reachable at pi3-1's IP.
+# The Zigbee dongle is plugged into pi3-1, not pi4 (where Home Assistant
+# runs), so ser2net bridges it over the network instead of hostPath
+# passthrough - same pattern as OTBR for the Thread radio. Exposes the
+# serial device as a plain TCP socket; HA's ZHA integration connects via
+# socket://192.168.0.104:6638. hostNetwork so the port is reachable at
+# pi3-1's IP.
 apiVersion: apps/v1
 kind: Deployment
 metadata:

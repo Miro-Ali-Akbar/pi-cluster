@@ -1,17 +1,7 @@
-# Unlike Longhorn, a single SeaweedFS volume isn't capped to one disk's
-# size - it distributes across all registered volume servers, so this can
-# actually use close to the full replicated pool capacity, not just one
-# disk's worth.
-#
-# The original 550Gi was set right at the edge of the then-570GB usable
-# pool - too tight: once every volume actually held its full 2 required
-# replicas (some had silently drifted to only 1 copy after a node outage,
-# masking the real usage), physical usage came out to ~595GB, over quota,
-# and the NAS refused writes ("No space left on device") even though real
-# file data was only ~297GB. Bumped to 620Gi as an immediate unblock -
-# still tight given ~523GB free across the pool at the time - pending a
-# much bigger bump once the pi4 SSD-to-2TB-HDD swap lands more real
-# capacity (see rpi-cluster-gitops README).
+# `storage` here is a SeaweedFS collection quota, not one disk's size - it
+# distributes across all registered volume servers. It's a PHYSICAL quota
+# (counts every replica), so with 2x replication, usable logical space is
+# roughly half this number.
 apiVersion: v1
 kind: PersistentVolumeClaim
 metadata:

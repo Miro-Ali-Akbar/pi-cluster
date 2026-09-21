@@ -1,7 +1,4 @@
-# NAS via Samba. Bulk-hdd storage is bus-limited to ~35-40 MB/s over the Pi 3's
-# USB2 controller and the cluster's 10/100 Mbps switch (see plan.md's Critical
-# Hardware Limitations) — set expectations accordingly, this is not a
-# high-throughput file server.
+# NAS via Samba, backed by the seaweedfs-storage StorageClass.
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -19,28 +16,15 @@ spec:
       labels:
         app: nas-samba
     spec:
-      # Moved off pi3-2: the FUSE mount client (weed mount, which does all
-      # the write chunking/hashing) runs on whichever node hosts this pod,
-      # and pi3-2 was doing that PLUS being an SMB server PLUS hosting
-      # web-server/site-counters PLUS one of the two data replicas - a
-      # bulk transfer stacked all of that onto one Pi 3 and drove its load
-      # average past 30. pi4 has double the RAM, a faster CPU, and nothing
-      # else competing for it.
       nodeSelector:
         kubernetes.io/hostname: pi4
       # SMB needs to be reachable from real LAN clients (phones, laptops),
       # not just other pods - same reasoning as HA/matter-server's hostNetwork.
       hostNetwork: true
       dnsPolicy: ClusterFirstWithHostNet
-      # Every time the SeaweedFS FUSE mount gets freshly (re-)established
-      # (after a crash, a watchdog-triggered pod recreate, etc.) the root
-      # of /share has intermittently come back mode 0750 owned root:root
-      # instead of the real backend permission (0777, verified directly
-      # via the filer's HTTP API) - smbd then can't chdir into it
-      # ("Permission denied") until someone notices and runs `chmod 0777
-      # /share` by hand. Running that chmod here, as root, before smbd
-      # ever starts, makes every future recreate self-healing instead of
-      # needing manual intervention.
+      # /share can come back from a fresh FUSE mount as 0750 root:root
+      # instead of 0777, which blocks smbd's chdir - fix it before smbd
+      # starts so every pod recreate self-heals.
       initContainers:
         - name: fix-share-permissions
           image: dperson/samba
@@ -70,14 +54,8 @@ spec:
               cpu: 100m
               memory: 128Mi
             limits:
-              # cpu limit added after nas-samba (moved here to pi4) helped
-              # drive pi4's own k3s API server unresponsive during a bulk
-              # transfer - with no cpu limit at all before this, smbd could
-              # burst to consume as much CPU as the transfer demanded,
-              # directly competing with k3s-server for cycles on the one
-              # node that's also the control plane. Scoped to just this
-              # pod rather than a node-wide kubelet reservation, which
-              # would have throttled Home Assistant too.
+              # Capped so a bulk transfer can't starve pi4's own k3s
+              # API server for CPU - this pod's node is the control plane.
               cpu: 500m
               memory: 256Mi
           volumeMounts:
