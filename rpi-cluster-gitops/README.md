@@ -146,6 +146,23 @@ own OS instead and would be silently lost if a node were reflashed:
   sudo rm -rf /var/lib/rancher/k3s/agent/containerd.bak-sdcard
   ```
 
+- **pi4 also runs a WireGuard server** (`/etc/wireguard/wg0.conf`,
+  `thearmorassistant.duckdns.org:51820`) for remote access when off the
+  home LAN - unrelated to k3s, but worth knowing about since it's the
+  only remote path into the cluster when away from home, and it was
+  found to be silently down (no handshake, 100% packet loss) during an
+  otherwise-unrelated pi3-1 instability incident. Originally scoped to
+  NAS-only access (`10.200.0.0/24`, no LAN routing); being widened to
+  route the full `192.168.0.0/24` LAN (so remote SSH to any node works,
+  not just reaching the NAS share) and shrunk to a `10.200.0.0/29` to
+  avoid colliding with other VPNs. Setup, the widening script, and the
+  client config live in the separate `guide-to-my-life` repo
+  (`linux_enviorment/setup_wireguard.sh`, `enable_wireguard_lan_access.sh`,
+  `wireguard_nas.md`) since it's personal remote-access tooling, not
+  cluster config - documented here only as a pointer, since "is my
+  remote access to this cluster currently working" is directly relevant
+  to anyone debugging this repo remotely.
+
 ## Known gaps
 
 - No Prometheus Operator/Alertmanager installed — Longhorn's alerting
