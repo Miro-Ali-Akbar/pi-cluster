@@ -99,9 +99,17 @@ spec:
       resources:
         requests:
           cpu: 50m
-          memory: 32Mi
+          memory: 48Mi
         limits:
-          memory: 128Mi
+          # Was 128Mi - OOMKilled repeatedly (visible as HTTP 502 to
+          # clients mid-transfer, pod restart) when serving anything past
+          # roughly 50-65MB, since it buffers a full object in memory
+          # rather than streaming it to the client. Bumped enough to
+          # comfortably handle the largest files currently on the NAS
+          # share (~140MB) with headroom - not raised further than that,
+          # since pi3-1 (where this is pinned) has been memory-tight
+          # before.
+          memory: 256Mi
 
     # Disable the single default volume group in favor of one named group per
     # physical disk, each pinned to the node that disk is actually on.
