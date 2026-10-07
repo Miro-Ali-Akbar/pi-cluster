@@ -2,9 +2,10 @@
 # integration uses, on 192.168.0.179:5580. Runs on phone-1 with hostNetwork
 # for mDNS discovery. The Thread devices are reached over IPv6 through the
 # OTBR border router on pi3-1 (phone-1 learns the Thread prefix route from the
-# router advertisements). No Bluetooth here: the phone has no BlueZ, so new
-# devices cannot be commissioned over BLE from this pod. Fabric data lives in
-# a hostPath on phone-1.
+# router advertisements). BLE commissioning goes through the phone's own
+# Bluetooth: NOBLE_BINDINGS=dbus talks to the host's bluetoothd over
+# /run/dbus, unprivileged, no direct HCI socket access needed. Fabric data
+# lives in a hostPath on phone-1.
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -34,6 +35,11 @@ spec:
       containers:
         - name: matter-server
           image: ghcr.io/matter-js/matterjs-server:stable
+          env:
+            - name: NOBLE_BINDINGS
+              value: "dbus"
+            - name: BLUETOOTH_ADAPTER
+              value: "0"
           resources:
             requests:
               cpu: 100m
@@ -43,8 +49,15 @@ spec:
           volumeMounts:
             - name: data
               mountPath: /data
+            - name: dbus
+              mountPath: /run/dbus
+              readOnly: true
       volumes:
         - name: data
           hostPath:
             path: /var/lib/matterjs-server/data
             type: DirectoryOrCreate
+        - name: dbus
+          hostPath:
+            path: /run/dbus
+            type: Directory
