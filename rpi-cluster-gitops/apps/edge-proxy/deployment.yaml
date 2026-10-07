@@ -14,6 +14,10 @@ spec:
     metadata:
       labels:
         app: edge-proxy
+      annotations:
+        # nginx reads its config only at start. Bump this whenever the
+        # edge-proxy ConfigMap changes so the pod restarts and picks it up.
+        config-revision: "2"
     spec:
       # k3s runs with traefik disabled (memory savings on pi4 - see
       # rpi-cluster-ansible/local.yml), so this stands in as the single

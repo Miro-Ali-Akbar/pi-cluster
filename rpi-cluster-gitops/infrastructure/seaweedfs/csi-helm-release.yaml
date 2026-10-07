@@ -4,6 +4,9 @@
 # CSI node driver and mount-service DaemonSets add real per-node overhead
 # none of the SeaweedFS-consuming apps need a hardware reason to accept.
 #
+# phone-1 (tainted node-type=phone) also runs the node and mount DaemonSets
+# so Home Assistant's backup job can use its SeaweedFS volume there.
+#
 # Every container below has an explicit resource limit - the chart's own
 # defaults are unbounded.
 apiVersion: helm.toolkit.fluxcd.io/v2
@@ -105,6 +108,11 @@ spec:
 
     node:
       enabled: true
+      tolerations:
+        - key: node-type
+          operator: Equal
+          value: phone
+          effect: NoSchedule
       affinity:
         nodeAffinity:
           requiredDuringSchedulingIgnoredDuringExecution:
@@ -112,10 +120,15 @@ spec:
               - matchExpressions:
                   - key: kubernetes.io/hostname
                     operator: In
-                    values: ["pi4", "pi3-2"]
+                    values: ["pi4", "pi3-2", "phone-1"]
 
     mountService:
       enabled: true
+      tolerations:
+        - key: node-type
+          operator: Equal
+          value: phone
+          effect: NoSchedule
       affinity:
         nodeAffinity:
           requiredDuringSchedulingIgnoredDuringExecution:
@@ -123,7 +136,7 @@ spec:
               - matchExpressions:
                   - key: kubernetes.io/hostname
                     operator: In
-                    values: ["pi4", "pi3-2"]
+                    values: ["pi4", "pi3-2", "phone-1"]
       resources:
         requests:
           cpu: 50m

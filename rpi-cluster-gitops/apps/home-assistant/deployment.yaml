@@ -6,7 +6,7 @@ metadata:
 spec:
   replicas: 0 # stopped for the move to phone-1
   strategy:
-    type: Recreate # ReadWriteOnce PVC — avoid two pods mounting it at once
+    type: Recreate # one pod owns the config directory on the node - never two at once
   selector:
     matchLabels:
       app: home-assistant
@@ -15,8 +15,16 @@ spec:
       labels:
         app: home-assistant
     spec:
+      # Runs on the phone: the Pis are memory-starved, the phone has 8 GB.
+      # Config and certificates live in hostPaths on phone-1 (see
+      # rpi-cluster-ansible/phone-1/README.md); backups go to SeaweedFS.
       nodeSelector:
-        node-role: control-plane # pin to the Pi 4 alongside its fast-ssd disk
+        kubernetes.io/hostname: phone-1
+      tolerations:
+        - key: node-type
+          operator: Equal
+          value: phone
+          effect: NoSchedule
       # Needed for mDNS/zeroconf discovery (Thread border routers, Cast,
       # HomeKit, etc.) - from inside the flannel overlay, HA never sees
       # multicast traffic from the physical LAN at all. Matches the same
@@ -34,52 +42,25 @@ spec:
               memory: 256Mi
             limits:
               memory: 768Mi
-          # Zigbee USB dongle (/dev/serial/by-id, /dev/ttyACM0) and the Pi's
-          # onboard Bluetooth (hci0 via BlueZ over D-Bus) both need host device
-          # access - privileged + mounting /dev and /run/dbus is the standard
-          # pattern for this, since Bluetooth specifically goes through the
-          # host's bluetoothd over D-Bus rather than a plain device file.
-          securityContext:
-            privileged: true
+          # No host devices needed: Zigbee (ZHA) reaches the dongle through
+          # ser2net on pi3-1, Matter and Thread are network services on
+          # pi3-1, and Bluetooth comes from the bt-proxy pod (ESPHome native
+          # API) instead of a local adapter.
           volumeMounts:
             - name: config
               mountPath: /config
-            - name: dev
-              mountPath: /dev
-            - name: dbus
-              mountPath: /run/dbus
             # /etc/letsencrypt/live/<domain>/*.pem are symlinks into
             # ../../archive/<domain>/ - mount the whole letsencrypt dir
             # (read-only) so those symlinks resolve, not just live/.
             - name: letsencrypt
               mountPath: /etc/letsencrypt
               readOnly: true
-            # SSH key for the cast-stack toggle switch (shell_command ->
-            # pi3-2, restricted there to one forced command - see
-            # rpi-cluster-ansible/local.yml). The key itself is never
-            # committed; the Secret is created out-of-band, same as the
-            # cluster's own join-token key.
-            - name: cast-toggle-key
-              mountPath: /config/.ssh
-              readOnly: true
       volumes:
         - name: config
           hostPath:
             path: /var/lib/home-assistant/config
             type: Directory
-        - name: dev
-          hostPath:
-            path: /dev
-            type: Directory
-        - name: dbus
-          hostPath:
-            path: /run/dbus
-            type: Directory
         - name: letsencrypt
           hostPath:
             path: /etc/letsencrypt
             type: Directory
-        - name: cast-toggle-key
-          secret:
-            secretName: ha-cast-toggle-key
-            defaultMode: 0600
