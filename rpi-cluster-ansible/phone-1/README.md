@@ -13,7 +13,7 @@ filesystem never mounts). Flash with `fastboot flash boot <image>` to the active
 ## Host config (provision.sh)
 
 - Hostname `phone-1`, `multi-user.target`, `chrony`, console log level 3.
-- SSH key only, no root login.
+- SSH key only, no root login. Login user `master` with passwordless sudo (`/etc/sudoers.d/90-master`), like the Pis; the image's default user `kali` is renamed to it.
 - `battery-limiter`: keeps the battery between 40 and 65% by suspending the USB input (write
   `Unknown` to `/sys/class/power_supply/pm8150b-charger/status`), stops charging at 42 C or above,
   always charges below 15%.
@@ -36,7 +36,7 @@ filesystem never mounts). Flash with `fastboot flash boot <image>` to the active
 - Wi-Fi: NetworkManager profile `cluster-wifi` (WPA-PSK) with `cloned-mac-address=26:be:5a:27:89:85`
   and `powersave=2` (off). The router reserves 192.168.0.179 for that MAC.
 - The join token: fetched from pi4 with the cluster key (`ssh -i <key> root@192.168.0.174 true`).
-- The kali password and the authorised SSH key.
+- The `master` password and the authorised SSH key.
 
 ## Do not
 

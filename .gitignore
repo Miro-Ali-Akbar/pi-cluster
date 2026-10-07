@@ -7,3 +7,4 @@ user-data-*.yml
 .pi4-console-fallback-password
 kubeconfig-pi4.yaml
 tmp/
+secrets/

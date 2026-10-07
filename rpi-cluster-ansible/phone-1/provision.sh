@@ -45,3 +45,12 @@ systemctl enable --now battery-limiter screen-off power-screen wifi-soak
 NODE_IP=$(ip -4 -o addr show wlan0 | awk '{print $4}' | cut -d/ -f1)
 curl -sfL https://get.k3s.io | INSTALL_K3S_VERSION="v1.36.3+k3s1" K3S_URL="https://192.168.0.174:6443" K3S_TOKEN="$K3S_TOKEN" \
   INSTALL_K3S_EXEC="agent --node-name phone-1 --node-ip $NODE_IP --flannel-iface wlan0 --node-label node-type=phone --node-taint node-type=phone:NoSchedule --kubelet-arg=fail-swap-on=false --kubelet-arg=eviction-hard=memory.available<600Mi --kubelet-arg=system-reserved=memory=400Mi" sh -s -
+
+# Login user: master with passwordless sudo, like the Pis (the image ships user kali).
+# Run the rename from a transient unit: it kills the user's sessions, including this one.
+echo "master ALL=(ALL) NOPASSWD:ALL" > /etc/sudoers.d/90-master
+chmod 440 /etc/sudoers.d/90-master
+visudo -c -q
+if id kali >/dev/null 2>&1; then
+  systemd-run --no-block --unit=rename-kali bash -c 'sleep 4; pkill -KILL -u kali; sleep 2; usermod -l master -d /home/master -m kali && groupmod -n master kali'
+fi
