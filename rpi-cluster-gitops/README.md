@@ -21,6 +21,10 @@ up — no manual apply needed.
 - **`nodeSelector: {kubernetes.io/hostname: <node>}`** — for apps tied to
   hardware on one specific node (Bluetooth/Zigbee/Thread dongles): `otbr/`,
   `matter-server/`, `zigbee-bridge/`.
+- **`phone-1`** (OnePlus 7 Pro, Wi-Fi, 8 GB) is tainted
+  `node-type=phone:NoSchedule`, so only apps that tolerate the taint and select
+  it run there: `web-server/` (stateless checkout, `emptyDir`, no SeaweedFS
+  volume).
 
 Storage: SeaweedFS, one StorageClass (`seaweedfs-storage`), volume servers
 pinned per-disk across pi4 (3 disks) and pi3-1/pi3-2 (1 disk each), 2x

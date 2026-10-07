@@ -15,14 +15,42 @@ spec:
       labels:
         app: web-server
     spec:
+      # Runs on the phone: it has the spare RAM the Pis lack, and the site is a
+      # throwaway checkout of a public repo, so it needs no persistent volume.
       nodeSelector:
-        kubernetes.io/hostname: pi3-2 # pi3-1 has no SeaweedFS CSI driver (kept off it to protect its tight memory headroom)
+        kubernetes.io/hostname: phone-1
+      tolerations:
+        - key: node-type
+          operator: Equal
+          value: phone
+          effect: NoSchedule
       # git-sync writes as its default uid/gid (65533) - fsGroup makes the
-      # PVC group-writable to it. Checked-out files stay world-readable
+      # emptyDir group-writable to it. Checked-out files stay world-readable
       # (git's default), so nginx's worker (uid 101, not in that group)
       # can still read them fine.
       securityContext:
         fsGroup: 65533
+      # Populate the checkout before nginx starts, so the first request after a
+      # (re)start never sees an empty /git. The emptyDir is fresh on every pod
+      # start, so a git lock left by a killed sync can never block the next one.
+      initContainers:
+        - name: git-sync-init
+          image: registry.k8s.io/git-sync/git-sync:v4.2.4
+          args:
+            - --repo=https://github.com/Miro-Ali-Akbar/website.git
+            - --ref=main
+            - --root=/git
+            - --link=website
+            - --one-time
+          resources:
+            requests:
+              cpu: 25m
+              memory: 32Mi
+            limits:
+              memory: 64Mi
+          volumeMounts:
+            - name: data
+              mountPath: /git
       containers:
         - name: nginx
           image: nginx:stable
@@ -45,7 +73,7 @@ spec:
           image: registry.k8s.io/git-sync/git-sync:v4.2.4
           args:
             - --repo=https://github.com/Miro-Ali-Akbar/website.git
-            - --branch=main
+            - --ref=main
             - --root=/git
             - --link=website
             - --period=60s
@@ -60,8 +88,8 @@ spec:
               mountPath: /git
       volumes:
         - name: data
-          persistentVolumeClaim:
-            claimName: web-server-data
+          emptyDir:
+            sizeLimit: 512Mi
         - name: conf
           configMap:
             name: web-server-conf
