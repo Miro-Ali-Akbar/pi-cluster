@@ -16,7 +16,12 @@ spec:
           serviceAccountName: certbot-ha
           restartPolicy: OnFailure
           nodeSelector:
-            node-role: control-plane # matches HA's own /etc/letsencrypt hostPath, on pi4
+            kubernetes.io/hostname: phone-1 # matches HA's own /etc/letsencrypt hostPath
+          tolerations:
+            - key: node-type
+              operator: Equal
+              value: phone
+              effect: NoSchedule
           initContainers:
             - name: certbot-renew
               image: certbot/certbot:latest

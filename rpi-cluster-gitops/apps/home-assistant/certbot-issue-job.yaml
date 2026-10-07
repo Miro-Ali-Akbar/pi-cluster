@@ -13,7 +13,12 @@ spec:
     spec:
       restartPolicy: Never
       nodeSelector:
-        node-role: control-plane # matches HA's own /etc/letsencrypt hostPath, on pi4
+        kubernetes.io/hostname: phone-1 # matches HA's own /etc/letsencrypt hostPath
+      tolerations:
+        - key: node-type
+          operator: Equal
+          value: phone
+          effect: NoSchedule
       containers:
         - name: certbot-issue
           image: certbot/certbot:latest

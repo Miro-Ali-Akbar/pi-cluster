@@ -16,8 +16,15 @@ spec:
     spec:
       template:
         spec:
+          # Reads the config hostPath on phone-1 and writes to the SeaweedFS
+          # volume, which the CSI node/mount DaemonSets provide on phone-1.
           nodeSelector:
-            node-role: control-plane
+            kubernetes.io/hostname: phone-1
+          tolerations:
+            - key: node-type
+              operator: Equal
+              value: phone
+              effect: NoSchedule
           restartPolicy: OnFailure
           containers:
             - name: rsync

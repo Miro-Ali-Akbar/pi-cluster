@@ -15,14 +15,14 @@ data:
 
     # SNI passthrough on :443, since the router can only forward external
     # 443 to one internal target - home.miro.zip (Home Assistant, which
-    # terminates TLS itself with its own cert on 192.168.0.174:8123) and
+    # terminates TLS itself with its own cert on 192.168.0.179:8123) and
     # miro.zip (terminated locally below, once a cert exists) share this
     # one port/IP by inspecting the unencrypted SNI hostname in the
     # ClientHello. ssl_preread reads that without decrypting anything, so
     # HA's own TLS session is untouched end to end.
     stream {
       map $ssl_preread_server_name $backend {
-        home.miro.zip 192.168.0.174:8123;
+        home.miro.zip 192.168.0.179:8123;
         default        127.0.0.1:8443;
       }
       server {
