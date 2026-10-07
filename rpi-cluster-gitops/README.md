@@ -1,100 +1,45 @@
 # rpi-cluster-gitops
 
-Kubernetes manifests for the cluster, synced by Flux.
-
-## Layout
+Kubernetes manifests, synced by Flux.
 
 ```
-clusters/my-cluster/   Flux's own Kustomizations
-infrastructure/        seaweedfs (storage) + mount-watchdog - synced first
-apps/                  home-assistant, nas, web-server, site-counters,
+clusters/my-cluster/   Flux Kustomizations (apps, infrastructure) and controller patches
+infrastructure/        seaweedfs (storage), mount-watchdog, coredns-phone - applied first
+apps/                  home-assistant, bt-proxy, monitoring, nas, web-server, site-counters,
                        edge-proxy, otbr, matter-server, zigbee-bridge
 ```
 
-Flux reconciles `infrastructure/` then `apps/`. Push a change, Flux picks it
-up — no manual apply needed.
+`apps` depends on `infrastructure`. Both decrypt `*.sops.yaml` with the `sops-age` Secret.
+The Flux controllers run on `phone-1` (`clusters/my-cluster/flux-system/on-phone-patch.yaml`).
 
-## Node scheduling
+## Scheduling
 
-- **`nodeSelector: {node-role: control-plane|worker}`** — labels:
-  `pi4=control-plane`, `pi3-1`/`pi3-2=worker`.
-- **`nodeSelector: {kubernetes.io/hostname: <node>}`** — for apps tied to
-  hardware on one specific node (Bluetooth/Zigbee/Thread dongles): `otbr/`,
-  `matter-server/`, `zigbee-bridge/`.
-- **`phone-1`** (OnePlus 7 Pro, Wi-Fi, 8 GB) is tainted
-  `node-type=phone:NoSchedule`, so only apps that tolerate the taint and select
-  it run there: `web-server/` (stateless checkout, `emptyDir`, no SeaweedFS
-  volume).
+- Hardware-tied apps select `kubernetes.io/hostname: <node>` (`otbr`, `matter-server`, `zigbee-bridge` on `pi3-1`; `bt-proxy` on `pi4`).
+- `phone-1` is tainted `node-type=phone:NoSchedule`. Apps there select it and tolerate the taint: Home Assistant, Flux, monitoring, web-server, coredns-phone, the certbot and backup jobs.
+- Home Assistant uses hostPaths on `phone-1` (`/var/lib/home-assistant/config`, `/etc/letsencrypt`), runs with `hostNetwork`, and reaches Zigbee (ser2net on `pi3-1`, port 6638), Matter (`pi3-1`, port 5580) and Bluetooth (bt-proxy on `pi4`, port 6053) over the network.
+- `bt-proxy`'s API has no authentication: `pi4` drops connections to port 6053 from any address but `phone-1` (`bt-proxy-firewall.service`, installed by `local.yml`).
 
-Storage: SeaweedFS, one StorageClass (`seaweedfs-storage`), volume servers
-pinned per-disk across pi4 (3 disks) and pi3-1/pi3-2 (1 disk each), 2x
-rack-diverse replication.
+## Storage
 
-## Bootstrap (disaster recovery only)
+SeaweedFS with one StorageClass, `seaweedfs-storage`: volume servers pinned per disk (3 on `pi4`, 1 each on `pi3-1` and `pi3-2`), 2x rack-diverse replication, master and filer on `pi3-1`. The CSI driver runs on `pi4`, `pi3-2` and `phone-1`. A volume server refuses to start without `.real-disk-marker` at the root of its disk (`sudo touch /mnt/<disk>/.real-disk-marker`).
 
-```
-flux bootstrap github --owner=Miro-Ali-Akbar --repository=pi-cluster --path=rpi-cluster-gitops/clusters/my-cluster
-```
+## Disaster recovery
 
-Needs a write-scoped `GITHUB_TOKEN`, run once from a workstation. Ongoing
-reconciliation only needs Flux's own deploy key.
+1. Provision the nodes (`ansible-pull`; the phone with `phone-1/provision.sh`).
+2. `flux bootstrap github --owner=Miro-Ali-Akbar --repository=pi-cluster --path=rpi-cluster-gitops/clusters/my-cluster` (needs a write-scoped `GITHUB_TOKEN`).
+3. Create the decryption key: `kubectl -n flux-system create secret generic sops-age --from-file=age.agekey=secrets/age.key`.
+4. Restore Home Assistant's config on `phone-1` from its backup, and re-issue certificates with the one-time `certbot-issue*` jobs (not in a kustomization on purpose).
+
+The K3s datastore can instead be restored from the phone's backup in `/var/backups/cluster/pi4`.
 
 ## Host-level config (not managed by Flux, lost on reflash)
 
-- **I/O throttle**, all 3 nodes, caps `kubepods.slice` to 20MB/s on `/dev/sda`:
+- **I/O throttle**, SSD nodes: cap `kubepods.slice` to 20 MB/s on `/dev/sda`.
   ```
   sudo mkdir -p /etc/systemd/system/kubepods.slice.d
-  cat <<EOF | sudo tee /etc/systemd/system/kubepods.slice.d/90-io-throttle.conf
-  [Slice]
-  IOReadBandwidthMax=/dev/sda 20M
-  IOWriteBandwidthMax=/dev/sda 20M
-  EOF
+  printf '[Slice]\nIOReadBandwidthMax=/dev/sda 20M\nIOWriteBandwidthMax=/dev/sda 20M\n' | sudo tee /etc/systemd/system/kubepods.slice.d/90-io-throttle.conf
   sudo systemctl daemon-reload
-  sudo systemctl set-property kubepods.slice IOReadBandwidthMax="/dev/sda 20M" IOWriteBandwidthMax="/dev/sda 20M" --runtime
   ```
-
-- **phone-1** (OnePlus 7 Pro): battery limiter, OLED-off, SSH hardening, K3s agent flags and
-  package holds are set by `rpi-cluster-ansible/phone-1/provision.sh` (see its README). The
-  Wi-Fi profile, join token and passwords are not in git.
-
-- **`.real-disk-marker`** required at the root of every physical disk a
-  SeaweedFS volume server uses; pods refuse to start without it
-  (`infrastructure/seaweedfs/helm-release.yaml`):
-  ```
-  sudo touch /mnt/<disk-path>/.real-disk-marker
-  ```
-
-- **pi4: k3s datastore** bind-mounted from SSD:
-  ```
-  sudo systemctl stop k3s
-  sudo mkdir -p /mnt/longhorn-disk1/k3s-server-db
-  sudo rsync -a /var/lib/rancher/k3s/server/db/ /mnt/longhorn-disk1/k3s-server-db/
-  sudo chmod 0700 /mnt/longhorn-disk1/k3s-server-db
-  sudo mv /var/lib/rancher/k3s/server/db /var/lib/rancher/k3s/server/db.bak-sdcard
-  sudo mkdir /var/lib/rancher/k3s/server/db && sudo chmod 0700 /var/lib/rancher/k3s/server/db
-  echo "/mnt/longhorn-disk1/k3s-server-db /var/lib/rancher/k3s/server/db none bind 0 0" | sudo tee -a /etc/fstab
-  sudo mount -a
-  sudo systemctl start k3s
-  ```
-
-- **pi4: containerd images/snapshots** bind-mounted from SSD:
-  ```
-  sudo systemctl stop k3s
-  sudo mkdir -p /mnt/longhorn-disk1/k3s-agent-containerd
-  sudo rsync -a /var/lib/rancher/k3s/agent/containerd/ /mnt/longhorn-disk1/k3s-agent-containerd/
-  sudo mv /var/lib/rancher/k3s/agent/containerd /var/lib/rancher/k3s/agent/containerd.bak-sdcard
-  sudo mkdir /var/lib/rancher/k3s/agent/containerd
-  echo "/mnt/longhorn-disk1/k3s-agent-containerd /var/lib/rancher/k3s/agent/containerd none bind 0 0" | sudo tee -a /etc/fstab
-  sudo mount -a
-  sudo systemctl start k3s
-  ```
-
-- **WireGuard on pi4** (`/etc/wireguard/wg0.conf`,
-  `thearmorassistant.duckdns.org:51820`) — the only remote path into the
-  cluster off the home LAN. Config lives in the `guide-to-my-life` repo
-  (`linux_enviorment/`), not here.
-
-## Known gaps
-
-- No cluster monitoring/alerting stack installed.
-- `bulk-hdd`-tier storage not yet set up.
+- **pi4: K3s datastore and containerd** are bind-mounted from the SSD (`/mnt/longhorn-disk1/k3s-server-db` onto `/var/lib/rancher/k3s/server/db`, `/mnt/longhorn-disk1/k3s-agent-containerd` onto `/var/lib/rancher/k3s/agent/containerd`) through `/etc/fstab`. The pre-move copies are `db.bak-sdcard` and `containerd.bak-sdcard`.
+- **pi4: WireGuard** (`/etc/wireguard/wg0.conf`, `thearmorassistant.duckdns.org:51820`) is the only remote path into the cluster. Its config is in the `guide-to-my-life` repo, not here.
+- **pi4 and pi3-1: `/usr/local/sbin/cluster-backup-export`** and the phone's restricted root key, installed by `local.yml`.

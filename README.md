@@ -1,55 +1,45 @@
 # Home Cluster
 
-A K3s cluster of three Raspberry Pis and one phone, running home automation and
-Zigbee/Matter/Thread bridging. The Pis are provisioned hands-off via `ansible-pull`
-on each node's own boot, the phone via `rpi-cluster-ansible/phone-1/`, and apps are
-deployed via Flux GitOps.
+K3s cluster of three Raspberry Pis and one phone running home automation and
+Zigbee/Matter/Thread bridging. The Pis provision themselves with `ansible-pull` on
+each boot, the phone with `rpi-cluster-ansible/phone-1/`, and apps deploy through Flux.
 
-## Hardware
+## Nodes
 
-| Node | Model | RAM | Role | Storage |
-| --- | --- | --- | --- | --- |
-| `pi4` (192.168.0.174) | Raspberry Pi 4 | 2 GB | control plane | 220 GB USB SSD → `/mnt/fast-storage` |
-| `pi3-1` (192.168.0.104) | Raspberry Pi 3 | 1 GB | worker (Zigbee/Thread hardware) | SD card only |
-| `pi3-2` (192.168.0.176) | Raspberry Pi 3+ | 1 GB | worker | SD card only |
-| `phone-1` (192.168.0.179) | OnePlus 7 Pro, Wi-Fi | 8 GB | worker, tainted `node-type=phone` | 224 GB UFS |
+| Node | Hardware | RAM | Runs |
+| --- | --- | --- | --- |
+| `pi4` 192.168.0.174 | Raspberry Pi 4, 220 GB USB SSD | 2 GB | K3s server, SeaweedFS volumes and S3 gateway, NAS (Samba), bt-proxy |
+| `pi3-1` 192.168.0.104 | Raspberry Pi 3, SD card | 1 GB | SeaweedFS master and filer, Matter server, OTBR, Zigbee bridge (the dongles are plugged in here) |
+| `pi3-2` 192.168.0.176 | Raspberry Pi 3+, SD card | 1 GB | edge proxy (ports 80/443 are forwarded here), site-counters, a SeaweedFS volume |
+| `phone-1` 192.168.0.179 | OnePlus 7 Pro, Wi-Fi, 224 GB | 8 GB | Home Assistant, Flux controllers, Prometheus and Alertmanager, web server, CoreDNS replica |
 
-`pi4` is chronically near its 2 GB memory limit (Longhorn + k3s + Flux +
-Home Assistant) — expect occasional probe-timeout warnings under load; it
-recovers on its own. If it worsens, move Home Assistant to a worker before
-adding anything else to `pi4`. Neither Pi 3 has a bulk-storage HDD attached.
+`phone-1` is tainted `node-type=phone:NoSchedule`; see `rpi-cluster-ansible/phone-1/README.md`.
+The Pis have little memory: `pi4` runs near its limit, `pi3-1` has about 150 MiB free.
+Put new workloads on `phone-1` first.
 
-## Repo layout
+## Layout
 
 ```
-rpi-cluster-ansible/   local.yml - runs on every node's own boot via ansible-pull
-rpi-cluster-gitops/    Kubernetes manifests, synced by Flux
-  infrastructure/      Longhorn, monitoring
-  apps/                everything in "What's running" below
+rpi-cluster-ansible/   local.yml (Pis) and phone-1/ (phone)
+rpi-cluster-gitops/    manifests synced by Flux, see its README
+secrets/               age private key for SOPS (gitignored, workstation only)
 ```
-
-There's no central control host or shared inventory — each node pulls and
-applies `local.yml` against itself. Hardware-specific tasks (USB
-device paths) are gated on `ansible_hostname`, not a generic role, since two
-nodes can share a role but not the same physical peripherals.
-
-## What's running
-
-| App | Where | Notes |
-| --- | --- | --- |
-| Home Assistant | `pi4` | |
-| Matter server, OTBR (Thread border router) | `pi3-1` | pinned to the node with the Thread dongle |
-| Zigbee bridge (ser2net) | `pi3-1` | |
-| NAS (Samba), web server | mixed | |
 
 ## Operating
 
-- **Node provisioning**: `ansible-pull` runs on every boot (systemd unit
-  installed by `local.yml` itself). To apply a change without waiting for a
-  reboot: `ssh <node> sudo systemctl start ansible-pull`.
-- **App deployment**: commit manifests under `rpi-cluster-gitops/apps/`,
-  push — Flux reconciles automatically.
-- **kubectl**: `export KUBECONFIG=kubeconfig-pi4.yaml` from this directory.
-- **Secrets** (never committed - created out-of-band, once): the cluster's
-  own join-token key at `/etc/rpi-cluster/id_ed25519` on each Pi.
+- **Change an app:** commit under `rpi-cluster-gitops/`, push to `main`; Flux applies it.
+- **Change a node:** edit `local.yml`; apply without a reboot with `ssh master@<node> sudo systemctl start ansible-pull`.
+- **kubectl:** `export KUBECONFIG=kubeconfig-pi4.yaml`.
+- **SSH:** user `master` with passwordless sudo on every node.
+- **Alerts:** Prometheus rules (node down or not Ready, low memory, full disk, crash loops, phone battery) go through Alertmanager to a Home Assistant webhook, which notifies the phone app.
+- **Backups:** `phone-1` pulls the K3s datastore, TLS material and token from `pi4`, and the SeaweedFS master and filer metadata from `pi3-1`, daily into `/var/backups/cluster` (14 kept). Home Assistant's own backups are mirrored to SeaweedFS every 6 hours.
 
+## Secrets
+
+Cluster Secrets are SOPS-encrypted (`*.sops.yaml`, age) in git and decrypted by Flux with
+the `sops-age` Secret. The age private key is not in git: it is at `secrets/age.key` on the
+workstation, in the password manager, and in the cluster. Edit one with `sops <file>`,
+commit, and restart the pods that read it.
+
+Not in git: the `flux-system` deploy key (made by `flux bootstrap`), the cluster join key
+`/etc/rpi-cluster/id_ed25519` on each Pi, the phone's Wi-Fi profile and SSH keys.

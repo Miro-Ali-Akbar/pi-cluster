@@ -1,40 +1,30 @@
 # rpi-cluster-ansible
 
-`local.yml` provisions the K3s cluster nodes. There's no central control host
-or shared inventory — each node runs this playbook against itself via
-`ansible-pull`, triggered by a systemd unit the playbook installs on its own
-first run (and re-runs on every boot after).
+`local.yml` provisions the Pis. There is no central control host or inventory: each node
+runs the playbook against itself with `ansible-pull`, from a systemd unit the playbook
+installs and that re-runs on every boot. The phone is set up by `phone-1/` instead.
 
-## What it does
+## What local.yml does
 
-- Installs `open-iscsi` (Longhorn dependency) on every node.
-- Idempotently appends the K3s cgroup kernel flags to `cmdline.txt` and
-  reboots at most once per boot generation (sentinel-file guarded, since
-  `ansible-pull` re-runs on every boot).
-- **Control plane** (`node_role: control-plane`, passed via `--extra-vars`):
-  formats/mounts the SSD (matched by stable `/dev/disk/by-id/ata-*` path —
-  never `/dev/sdX`, which has collided with a Longhorn iSCSI volume enumerated
-  on the same device name), installs the K3s server, restricts the node-token
-  file to root reachable only via a forced-command SSH key.
-- **Worker** (`node_role: worker`): formats/mounts a USB HDD if one's attached
-  (matched by `/dev/disk/by-id/usb-*`, same reasoning as above — most workers
-  don't currently have one), joins K3s as an agent only.
-- **Hardware-specific tasks are gated on `ansible_hostname`, not role** —
-  Bluetooth/Zigbee/Thread dongles are physically plugged into specific nodes,
-  and two nodes sharing a role doesn't mean they share peripherals. See the
-  `pi3-1`/`pi3-2`-scoped blocks near the end of the playbook.
+- Appends the K3s cgroup flags to `cmdline.txt` and reboots at most once per boot
+  generation (sentinel-file guarded).
+- **Control plane** (`node_role: control-plane`, passed as an extra-var): formats and mounts
+  the SSD (matched by `/dev/disk/by-id/ata-*`, never `/dev/sdX`), installs the K3s server
+  with traefik, metrics-server and local-storage disabled, and restricts the node token to
+  root, readable only through the cluster key's forced command.
+- **Worker** (`node_role: worker`): formats and mounts a USB HDD if one is attached (matched by
+  `/dev/disk/by-id/usb-*`), joins K3s as an agent.
+- **pi4:** `bt-proxy-firewall.service` allows only `phone-1` to reach port 6053.
+- **pi4 and pi3-1:** installs `cluster-backup-export` and authorizes `phone-1`'s key for root,
+  restricted to that one command (it streams a tar.gz of the K3s datastore, TLS keys and
+  token on `pi4`, or the SeaweedFS master and filer metadata on `pi3-1`).
+- Hardware-specific tasks are gated on `ansible_hostname`, not role: the dongles are plugged
+  into specific nodes.
 
-## Triggering a run without waiting for reboot
+## Adding a node
 
-```
-ssh <node> sudo systemctl start ansible-pull
-```
-
-## Adding a new node
-
-1. Reserve its IP via DHCP (MAC-based), flash Raspberry Pi OS Lite.
-2. Provision the cluster SSH keypair at `/etc/rpi-cluster/id_ed25519` (workers
-   need it to fetch the join token from the control plane over SSH, never
-   over plain HTTP) — this repo intentionally ships no keys.
-3. First boot runs `ansible-pull` via the cloud-init `user-data.yml` in this
-   repo, passing `pi4_local_ip` and `node_role` as extra-vars.
+1. Reserve its IP in the router by MAC and flash Raspberry Pi OS Lite.
+2. Put the cluster key at `/etc/rpi-cluster/id_ed25519` (workers fetch the join token with it).
+   This repo ships no keys.
+3. First boot runs `ansible-pull` from the cloud-init `user-data.yml` (see
+   `cloud-init/user-data.yml.example`), passing `pi4_local_ip` and `node_role`.

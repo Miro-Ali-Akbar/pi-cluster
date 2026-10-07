@@ -45,18 +45,6 @@
         enabled: true
         daemon_reload: "{{ ansible_pull_unit.changed }}"
 
-    - name: Install open-iscsi (required by Longhorn)
-      ansible.builtin.apt:
-        name: open-iscsi
-        state: present
-        update_cache: true
-
-    - name: Enable and start iscsid
-      ansible.builtin.systemd:
-        name: iscsid
-        enabled: true
-        state: started
-
     - name: Check whether cgroup flags are already present
       ansible.builtin.command: "grep -q '{{ cgroup_flags }}' {{ cmdline_path }}"
       register: cgroup_check
