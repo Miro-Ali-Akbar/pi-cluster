@@ -1,0 +1,11 @@
+[Unit]
+Description=Turn the OLED black (no burn-in)
+After=getty@tty1.service multi-user.target
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+ExecStart=/usr/local/sbin/screen-off
+
+[Install]
+WantedBy=multi-user.target

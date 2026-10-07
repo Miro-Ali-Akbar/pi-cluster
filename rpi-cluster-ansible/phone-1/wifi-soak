@@ -1,0 +1,15 @@
+#!/bin/bash
+# One CSV line per minute: Wi-Fi signal/bitrate, loss and latency to the control plane, driver error count.
+OUT=/var/log/wifi-soak.csv
+[ -s "$OUT" ] || echo "time,signal_dbm,tx_bitrate,loss_pct,rtt_avg_ms,rtt_max_ms,ath10k_errors,reconnects" > "$OUT"
+while true; do
+  sig=$(iw dev wlan0 link 2>/dev/null | awk '/signal:/{print $2}')
+  br=$(iw dev wlan0 link 2>/dev/null | awk '/tx bitrate:/{print $3}')
+  p=$(ping -c 20 -i 0.5 -q 192.168.0.174 2>/dev/null)
+  loss=$(echo "$p" | sed -n 's/.* \([0-9.]*\)% packet loss.*/\1/p')
+  rtt=$(echo "$p" | sed -n 's/.*= [0-9.]*\/\([0-9.]*\)\/\([0-9.]*\)\/.*/\1,\2/p')
+  err=$(dmesg | grep -c 'ath10k.*\(firmware crashed\|failed\|timeout\)')
+  rc=$(journalctl -u NetworkManager --no-pager --since "-1min" 2>/dev/null | grep -c "wlan0: .*disconnected\|deauth")
+  echo "$(date +%FT%T),${sig:-NA},${br:-NA},${loss:-NA},${rtt:-NA,NA},$err,$rc" >> "$OUT"
+  sleep 40
+done

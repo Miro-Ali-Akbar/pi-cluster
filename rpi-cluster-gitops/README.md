@@ -53,6 +53,10 @@ reconciliation only needs Flux's own deploy key.
   sudo systemctl set-property kubepods.slice IOReadBandwidthMax="/dev/sda 20M" IOWriteBandwidthMax="/dev/sda 20M" --runtime
   ```
 
+- **phone-1** (OnePlus 7 Pro): battery limiter, OLED-off, SSH hardening, K3s agent flags and
+  package holds are set by `rpi-cluster-ansible/phone-1/provision.sh` (see its README). The
+  Wi-Fi profile, join token and passwords are not in git.
+
 - **`.real-disk-marker`** required at the root of every physical disk a
   SeaweedFS volume server uses; pods refuse to start without it
   (`infrastructure/seaweedfs/helm-release.yaml`):

@@ -1,0 +1,26 @@
+#!/bin/bash
+# Keep the battery between LOW and HIGH percent by suspending/enabling the USB input.
+# Writing "Unknown" to the charger status suspends the input (phone runs on battery),
+# writing "Charging" enables it again. Also stops charging when hot and always
+# charges below CRIT so the node never drains flat.
+C=/sys/class/power_supply/pm8150b-charger
+B=/sys/class/power_supply/qcom-battery
+LOW=${LOW:-40}; HIGH=${HIGH:-65}; CRIT=${CRIT:-15}; TMAX=${TMAX:-420}   # TMAX in 0.1 C
+last=""
+set_input() {   # $1 = on|off, $2 = reason
+  if [ "$1" != "$last" ]; then
+    if [ "$1" = on ]; then echo Charging > $C/status; else echo Unknown > $C/status; fi
+    echo "input $1 ($2): cap=${cap}% temp=${temp} (0.1C)"
+    last=$1
+  fi
+}
+while true; do
+  cap=$(cat $B/capacity 2>/dev/null); temp=$(cat $B/temp 2>/dev/null)
+  if [ -z "$cap" ] || [ "$(cat $B/present 2>/dev/null)" != 1 ]; then sleep 30; continue; fi
+  if   [ "$cap" -lt "$CRIT" ];                    then set_input on  "below critical level"
+  elif [ -n "$temp" ] && [ "$temp" -ge "$TMAX" ]; then set_input off "battery too warm"
+  elif [ "$cap" -ge "$HIGH" ];                    then set_input off "reached upper limit"
+  elif [ "$cap" -le "$LOW" ];                     then set_input on  "reached lower limit"
+  fi
+  sleep 30
+done

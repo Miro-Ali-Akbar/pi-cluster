@@ -1,0 +1,9 @@
+#!/bin/sh
+# The panel has no power control (simpledrm scanout), so console blanking does not darken it.
+# Make every pixel black instead: black on black, no cursor, no blanking timer, zeroed framebuffer.
+echo 0 > /sys/class/graphics/fbcon/cursor_blink 2>/dev/null
+for t in /dev/tty1 /dev/tty0; do
+  TERM=linux setterm --foreground black --background black --cursor off --blank 0 --powerdown 0 --clear all < $t > $t 2>/dev/null
+done
+dd if=/dev/zero of=/dev/fb0 bs=1M count=18 2>/dev/null
+exit 0

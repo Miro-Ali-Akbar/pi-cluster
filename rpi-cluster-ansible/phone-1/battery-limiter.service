@@ -1,0 +1,12 @@
+[Unit]
+Description=Keep the battery between 40 and 65 percent
+After=multi-user.target
+
+[Service]
+ExecStart=/usr/local/sbin/battery-limiter
+Restart=always
+RestartSec=5
+Nice=10
+
+[Install]
+WantedBy=multi-user.target

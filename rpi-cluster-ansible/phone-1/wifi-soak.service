@@ -1,0 +1,11 @@
+[Unit]
+Description=Wi-Fi soak logger (one CSV line per minute)
+After=NetworkManager.service
+
+[Service]
+ExecStart=/usr/local/sbin/wifi-soak
+Restart=always
+Nice=15
+
+[Install]
+WantedBy=multi-user.target
