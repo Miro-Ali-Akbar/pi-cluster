@@ -1,7 +1,8 @@
 # Alerts go to a Home Assistant webhook, which sends a mobile notification
 # (automation "cluster_alert" in the HA config on phone-1). The webhook URL is
 # the only authentication on that endpoint, so it lives in the Secret
-# alertmanager-webhook (key: url), created by hand and not stored in git.
+# alertmanager-webhook (key: url, https://192.168.0.179:8123/api/webhook/<id>),
+# created by hand and not stored in git.
 apiVersion: v1
 kind: ConfigMap
 metadata:
@@ -20,6 +21,11 @@ data:
         webhook_configs:
           - url_file: /etc/alertmanager-secret/url
             send_resolved: true
+            http_config:
+              tls_config:
+                # HA serves HTTPS with a certificate for home.miro.zip; the
+                # webhook is called by LAN IP, so the name cannot match.
+                insecure_skip_verify: true
 ---
 apiVersion: apps/v1
 kind: Deployment
@@ -35,6 +41,8 @@ spec:
     metadata:
       labels:
         app: alertmanager
+      annotations:
+        config-revision: "1"
     spec:
       nodeSelector:
         kubernetes.io/hostname: phone-1
