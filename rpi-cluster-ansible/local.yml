@@ -334,8 +334,8 @@
               [Service]
               Type=oneshot
               RemainAfterExit=yes
-              ExecStart=/bin/sh -c 'iptables -C INPUT -p tcp --dport 6053 ! -s 192.168.0.179 -j DROP 2>/dev/null || iptables -I INPUT 1 -p tcp --dport 6053 ! -s 192.168.0.179 -j DROP'
-              ExecStop=/bin/sh -c 'iptables -D INPUT -p tcp --dport 6053 ! -s 192.168.0.179 -j DROP 2>/dev/null || true'
+              ExecStart=/bin/sh -c 'iptables -C INPUT -p tcp --dport 6053 ! -i lo ! -s 192.168.0.179 -j DROP 2>/dev/null || iptables -I INPUT 1 -p tcp --dport 6053 ! -i lo ! -s 192.168.0.179 -j DROP; ip6tables -C INPUT -p tcp --dport 6053 -j DROP 2>/dev/null || ip6tables -I INPUT 1 -p tcp --dport 6053 -j DROP'
+              ExecStop=/bin/sh -c 'iptables -D INPUT -p tcp --dport 6053 ! -i lo ! -s 192.168.0.179 -j DROP 2>/dev/null; ip6tables -D INPUT -p tcp --dport 6053 -j DROP 2>/dev/null; true'
 
               [Install]
               WantedBy=multi-user.target
