@@ -1,0 +1,52 @@
+# The Flux controllers need nothing specific to a node, just network access
+# to the API server and GitHub. phone-1 has the RAM the Pis lack, so they run
+# there (tolerating its taint). Patches on top of the auto-generated
+# gotk-components.yaml rather than hand-editing it, since that file gets
+# regenerated if `flux bootstrap` is ever re-run.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: source-controller
+  namespace: flux-system
+spec:
+  template:
+    spec:
+      nodeSelector:
+        kubernetes.io/hostname: phone-1
+      tolerations:
+        - key: node-type
+          operator: Equal
+          value: phone
+          effect: NoSchedule
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: helm-controller
+  namespace: flux-system
+spec:
+  template:
+    spec:
+      nodeSelector:
+        kubernetes.io/hostname: phone-1
+      tolerations:
+        - key: node-type
+          operator: Equal
+          value: phone
+          effect: NoSchedule
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: kustomize-controller
+  namespace: flux-system
+spec:
+  template:
+    spec:
+      nodeSelector:
+        kubernetes.io/hostname: phone-1
+      tolerations:
+        - key: node-type
+          operator: Equal
+          value: phone
+          effect: NoSchedule
