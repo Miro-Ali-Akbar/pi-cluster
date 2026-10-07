@@ -25,11 +25,20 @@ systemctl mask qcom-modem-setup.service phosh.service
 [ -e /etc/modules-load.d/guacamole-gpu.conf ] && mv /etc/modules-load.d/guacamole-gpu.conf /etc/modules-load.d/guacamole-gpu.conf.disabled
 systemctl mask getty@tty1.service
 
-# Battery limiter, OLED off, Wi-Fi soak logger
-install -m 755 battery-limiter screen-off wifi-soak /usr/local/sbin/
-install -m 644 battery-limiter.service screen-off.service wifi-soak.service /etc/systemd/system/
+# Desktop user services (audio, MMS, cell broadcast) burn CPU on a headless node
+systemctl --global mask pipewire.socket pipewire-pulse.socket pipewire.service pipewire-pulse.service \
+  wireplumber.service mmsd-tng.service cellbroadcastd.service filter-chain.service mpris-proxy.service gvfs-daemon.service
+
+# The power key must never shut the node down (it toggles the screen instead, see power-screen)
+mkdir -p /etc/systemd/logind.conf.d
+install -m 644 10-power-key.conf /etc/systemd/logind.conf.d/
+systemctl kill -s HUP systemd-logind
+
+# Battery limiter, OLED off, power button screen toggle, Wi-Fi soak logger
+install -m 755 battery-limiter screen-off power-screen wifi-soak /usr/local/sbin/
+install -m 644 battery-limiter.service screen-off.service power-screen.service wifi-soak.service /etc/systemd/system/
 systemctl daemon-reload
-systemctl enable --now battery-limiter screen-off wifi-soak
+systemctl enable --now battery-limiter screen-off power-screen wifi-soak
 
 # K3s agent: tainted so only tolerating workloads land here; zram swap kept
 : "${K3S_TOKEN:?set K3S_TOKEN}"

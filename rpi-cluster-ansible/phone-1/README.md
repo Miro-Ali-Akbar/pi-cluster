@@ -20,6 +20,12 @@ filesystem never mounts). Flash with `fastboot flash boot <image>` to the active
 - `screen-off`: the panel has no power control, so the console is set black on black, no cursor,
   framebuffer zeroed, and `getty@tty1` is masked. Check with
   `dd if=/dev/fb0 bs=1M | tr -d '\000' | wc -c` (0 means every pixel is dark).
+- `power-screen`: the power button toggles the screen. On shows a status page (addresses, Wi-Fi
+  signal, battery, temperatures, k3s state) and switches itself off after 120 s; off is `screen-off`.
+  logind ignores the power key (short and long press), so the button cannot shut the node down.
+  `systemctl kill -s USR1 power-screen` toggles it from SSH.
+- Desktop user services (pipewire, wireplumber, mmsd-tng and others) are masked. Idle battery
+  draw went from about 650 mA to about 310 mA.
 - `wifi-soak`: one CSV line per minute to `/var/log/wifi-soak.csv` (signal, loss and latency to pi4).
 - `linux-image-6.17.0-sm8150` and `phoc` are held. The GPU driver (`msm`) is not loaded at boot.
 - K3s agent v1.36.3, node IP on `wlan0`, label `node-type=phone`, taint `node-type=phone:NoSchedule`,

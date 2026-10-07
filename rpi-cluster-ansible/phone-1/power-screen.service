@@ -1,0 +1,13 @@
+[Unit]
+Description=Power button toggles the OLED (status page or black)
+After=screen-off.service
+
+[Service]
+ExecStart=/usr/local/sbin/power-screen
+Environment=SCREEN_TIMEOUT=120
+Restart=always
+RestartSec=3
+Nice=10
+
+[Install]
+WantedBy=multi-user.target

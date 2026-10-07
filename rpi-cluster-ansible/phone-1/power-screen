@@ -1,0 +1,136 @@
+#!/usr/bin/env python3
+"""Power button toggles the OLED.
+
+On: a status page (addresses, battery, temperature) that switches itself off after SCREEN_TIMEOUT
+seconds so it can never sit lit and burn the panel. Off: every pixel black (screen-off).
+SIGUSR1 toggles too (systemctl kill -s USR1 power-screen), which is how to test without the button.
+"""
+import os
+import re
+import signal
+import struct
+import subprocess
+import sys
+import threading
+import time
+
+TIMEOUT = int(os.environ.get("SCREEN_TIMEOUT", "120"))
+REFRESH = 2
+TTY = "/dev/tty1"
+FONT = "Arabic-DejaVuBold43x24"
+KEY_POWER = 116
+EVENT = struct.Struct("llHHi")  # struct input_event on 64-bit Linux
+
+lock = threading.Lock()
+deadline = 0.0  # 0 means off
+
+
+def read(path, default="?"):
+    try:
+        with open(path) as f:
+            return f.read().strip()
+    except OSError:
+        return default
+
+
+def run(*cmd, timeout=5):
+    try:
+        return subprocess.run(cmd, capture_output=True, text=True, timeout=timeout).stdout
+    except (OSError, subprocess.SubprocessError):
+        return ""
+
+
+def find_power_event():
+    for block in read("/proc/bus/input/devices", "").split("\n\n"):
+        if "pwrkey" in block:
+            m = re.search(r"event(\d+)", block)
+            if m:
+                return f"/dev/input/event{m.group(1)}"
+    sys.exit("power key input device not found")
+
+
+def status_lines():
+    bat = "/sys/class/power_supply/qcom-battery"
+    chg = "/sys/class/power_supply/pm8150b-charger"
+    cap = read(f"{bat}/capacity")
+    state = read(f"{bat}/status")
+    cur = read(f"{bat}/current_now", "0")
+    temp = read(f"{bat}/temp", "0")
+    soc = read("/sys/class/thermal/thermal_zone0/temp", "0")
+    ips = re.findall(r"inet (\S+?)/", run("ip", "-4", "-o", "addr", "show"))
+    ips = [i for i in ips if not i.startswith("127.") and not i.startswith("10.4")]
+    sig = re.search(r"signal: (\S+ dBm)", run("iw", "dev", "wlan0", "link"))
+    up = int(float(read("/proc/uptime", "0").split()[0]))
+    return [
+        "phone-1",
+        "",
+        "ip      " + " ".join(ips),
+        "wifi    " + (sig.group(1) if sig else "not connected"),
+        "",
+        f"battery {cap}%  {read(f'{chg}/status')}",
+        f"draw    {int(cur) // 1000} mA   input limit {int(read(f'{chg}/current_max', '0')) // 1000} mA",
+        f"temp    battery {int(temp) / 10:.1f} C   soc {int(soc) / 1000:.0f} C",
+        "",
+        f"k3s     {run('systemctl', 'is-active', 'k3s-agent').strip()}",
+        f"uptime  {up // 3600}h {up % 3600 // 60}m",
+        "",
+        f"(switches off in {max(0, int(deadline - time.time()))} s)",
+    ]
+
+
+def draw():
+    text = "\033[?25l\033[97;40m\033[2J\033[H" + "\n" * 8 + "\n".join(status_lines())
+    with open(TTY, "w") as tty:
+        tty.write(text)
+
+
+def screen_on():
+    global deadline
+    run("setfont", "-C", TTY, FONT)
+    deadline = time.time() + TIMEOUT
+    draw()
+
+
+def screen_off():
+    global deadline
+    deadline = 0.0
+    # zeroing the whole framebuffer is slow on this uncached scanout buffer: let it finish
+    run("/usr/local/sbin/screen-off", timeout=60)
+
+
+def toggle(*_):
+    with lock:
+        if deadline:
+            screen_off()
+        else:
+            screen_on()
+
+
+def refresher():
+    while True:
+        time.sleep(REFRESH)
+        with lock:
+            if deadline:
+                if time.time() >= deadline:
+                    screen_off()
+                else:
+                    draw()
+
+
+def main():
+    signal.signal(signal.SIGUSR1, toggle)
+    threading.Thread(target=refresher, daemon=True).start()
+    dev = find_power_event()
+    with open(dev, "rb", buffering=0) as f:
+        while True:
+            data = f.read(EVENT.size)
+            if len(data) < EVENT.size:
+                time.sleep(1)
+                continue
+            _, _, etype, code, value = EVENT.unpack(data)
+            if etype == 1 and code == KEY_POWER and value == 1:
+                toggle()
+
+
+if __name__ == "__main__":
+    main()
