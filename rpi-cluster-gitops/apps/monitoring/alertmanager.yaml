@@ -1,8 +1,7 @@
 # Alerts go to a Home Assistant webhook, which sends a mobile notification
 # (automation "cluster_alert" in the HA config on phone-1). The webhook URL is
-# the only authentication on that endpoint, so it lives in the Secret
-# alertmanager-webhook (key: url, https://192.168.0.179:8123/api/webhook/<id>),
-# created by hand and not stored in git.
+# the only authentication on that endpoint, so it lives in the SOPS-encrypted
+# Secret alertmanager-webhook (alertmanager-webhook.sops.yaml, key: url).
 apiVersion: v1
 kind: ConfigMap
 metadata:

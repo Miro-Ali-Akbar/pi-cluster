@@ -6,5 +6,6 @@ resources:
   - prometheus-config.yaml
   - prometheus.yaml
   - alertmanager.yaml
+  - alertmanager-webhook.sops.yaml
   - node-exporter.yaml
   - kube-state-metrics.yaml

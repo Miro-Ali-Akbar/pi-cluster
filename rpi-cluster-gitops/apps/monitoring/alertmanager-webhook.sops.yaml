@@ -1,0 +1,23 @@
+apiVersion: v1
+kind: Secret
+metadata:
+    name: alertmanager-webhook
+    namespace: monitoring
+type: Opaque
+stringData:
+    url: ENC[AES256_GCM,data:u68hJbUJD+IUB6y1VMjW0YC3OrHnIF9FOA6IfFKfrdUz2rexqZsVMWzOvY4NB8GJXzePdatl9lkX8sWmOpKlb/v6g2GQndtSvHyptbZkVgVVjrVl8KTaaBLPywJQpV1P/ygHySuH,iv:ytim73J1JnN2rjQqVSU4hPID3cilLkwPBzb9O3Rl2xk=,tag:9+lSwMc0i261ljI89xyFfg==,type:str]
+sops:
+    age:
+        - enc: |
+            -----BEGIN AGE ENCRYPTED FILE-----
+            YWdlLWVuY3J5cHRpb24ub3JnL3YxCi0+IFgyNTUxOSB0MzhOcXcydS9jZXZ6YkNs
+            Tk13WUFQdG1tN3JMUHBjYkR3eU9DWmJzK2pRCjYxaC9xVXBTYk5jSThJTk1KdnRz
+            c0JHYmtqYTAraVh6S3ZJb0srb3NoQXMKLS0tIGdoZUxjZmhIcFR0S0hSNnVNcHdC
+            ekFCL3U2TDRmVWgybjJiTVg0L051dHMK87uSKiaDq9FlcelNEStDxbwJ9ganrDyn
+            zUr/T0mt+LAsP1ujW5oiiJ3otfb211OhxXyBvcAneGDdphbdM0cycA==
+            -----END AGE ENCRYPTED FILE-----
+          recipient: age1742pp7memrxpg9w9zm5m5aups35pkh9tqduzex802kawsec74aqq8xz3eu
+    encrypted_regex: ^(data|stringData)$
+    lastmodified: "2026-10-07T21:53:41Z"
+    mac: ENC[AES256_GCM,data:qUsSZTK/DEKo5I2/FDHinwCtwEiL9e0f7ZIos4dhpLCmIWcxmAuvr2IUyqMCe4OXNn5QqlKTBjDGSo1TSWMp1Yv0tnhm5x23Jquhuvoheig/Jb5UUtM1F0JvhKSsUbUk1cvGkFH7M5bK5RUU44AtLjtwhEC++sOBbP38r4U+/gQ=,iv:GUUmyto+JHN7nJN4Bk8IFyHn0qLz3Q+tc7Dt8R9BAKE=,tag:Ba2TEFfhl/YFqgmV4CwHrg==,type:str]
+    version: 3.13.3
