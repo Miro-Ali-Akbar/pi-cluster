@@ -6,3 +6,4 @@ resources:
   - helm-release.yaml
   - csi-helm-repository.yaml
   - csi-helm-release.yaml
+  - s3-credentials.sops.yaml

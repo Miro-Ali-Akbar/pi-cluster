@@ -1,0 +1,23 @@
+apiVersion: v1
+kind: Secret
+metadata:
+    name: duckdns-token
+    namespace: home-assistant
+type: Opaque
+stringData:
+    token: ENC[AES256_GCM,data:WF3vm9YPHSUfhz0tmAKTxwoUtir2ePGX8dkF0SXveLe0/f0h,iv:XAGz8GzroXKOBSZyx3oSBaifHc2coOfawAwmxeWTHk8=,tag:mGWlCvHm8ULiTa/NaEi6FA==,type:str]
+sops:
+    age:
+        - enc: |
+            -----BEGIN AGE ENCRYPTED FILE-----
+            YWdlLWVuY3J5cHRpb24ub3JnL3YxCi0+IFgyNTUxOSB5dTJIVUVEQWFZTTlDN0Vw
+            bUN4TFA4THdrQ0U4eDdvbHJSbWxhNkFJbFFJCnhLQmh0VUdZdzlBTEE5YlZBOXhj
+            U2d3L3hnLzJmQXZ0WWNVZHlQTWZXU1kKLS0tIDJrbXc0TVUwS0kwdWZYaEZTbVc1
+            ZjFYN3ZZcVZTRnFEK3orR1ZpclNTdTAKdnzN+wm6F36Cq5x/bAy5gUqFWSrsbIP4
+            5o8rZJG+6Cz5ShBMd2iZDpFHBb/EDe1owDbNfBEYIP/bU5ekNkfYqg==
+            -----END AGE ENCRYPTED FILE-----
+          recipient: age1742pp7memrxpg9w9zm5m5aups35pkh9tqduzex802kawsec74aqq8xz3eu
+    encrypted_regex: ^(data|stringData)$
+    lastmodified: "2026-10-07T21:59:28Z"
+    mac: ENC[AES256_GCM,data:1yw8jYgqKw+5VLORca8BYbgGazUDMxY7IXJC7acaiZ10QL9P3eGwLSbOncrH+XLp4aQiQVMQT4nLG79dyfZplPhdw3ctNCLFTJSmlzkon0I2kR45yPU92fR9BSbCbxXWWadnA8Iw7//HdjLhj5b3dnuR+qqNFeS85/9QHqqyP6s=,iv:e1a816fkQRQ0+6lDegl0ayPb5677HcVBXVQOAyFs5Bc=,tag:OvBq1pNoGeDpZYpECIGqUQ==,type:str]
+    version: 3.13.3

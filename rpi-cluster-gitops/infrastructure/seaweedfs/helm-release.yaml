@@ -66,9 +66,8 @@ spec:
     # S3-compatible gateway - lets us generate presigned download links for
     # individual NAS files. A SeaweedFS "bucket" is just a top-level
     # directory under the filer, so nas-data's PVC already is one, no
-    # separate storage needed. Auth keys live in an out-of-band Secret
-    # (seaweedfs-s3-credentials, created via kubectl - not committed here,
-    # same pattern as nas-samba-credentials).
+    # separate storage needed. Auth keys live in a Secret
+    # (seaweedfs-s3-credentials, SOPS-encrypted in s3-credentials.sops.yaml).
     s3:
       enabled: true
       enableAuth: true

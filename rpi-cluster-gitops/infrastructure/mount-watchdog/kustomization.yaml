@@ -4,3 +4,4 @@ resources:
   - namespace.yaml
   - rbac.yaml
   - cronjob.yaml
+  - nas-samba-credentials.sops.yaml

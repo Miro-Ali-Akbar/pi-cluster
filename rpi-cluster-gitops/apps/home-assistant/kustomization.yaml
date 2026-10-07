@@ -9,3 +9,4 @@ resources:
   - certbot-hooks-configmap.yaml
   - certbot-rbac.yaml
   - certbot-renew-cronjob.yaml
+  - duckdns-token.sops.yaml
