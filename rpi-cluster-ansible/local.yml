@@ -314,3 +314,36 @@
             K3S_TOKEN={{ worker_node_token.stdout | trim }}
             sh -s - agent
           when: not k3s_agent_installed.stat.exists
+
+    # --- pi4: only phone-1 (Home Assistant) may reach the Bluetooth proxy ---
+    # bt-proxy's ESPHome API (tcp/6053, hostNetwork) has no authentication or
+    # encryption, so drop connections to it from every address but the phone.
+    - name: Restrict the bt-proxy API port to phone-1
+      when: ansible_hostname == 'pi4'
+      block:
+        - name: Install the bt-proxy firewall unit
+          ansible.builtin.copy:
+            dest: /etc/systemd/system/bt-proxy-firewall.service
+            mode: "0644"
+            content: |
+              [Unit]
+              Description=Only phone-1 may reach the bt-proxy API (tcp/6053)
+              After=network-online.target
+              Wants=network-online.target
+
+              [Service]
+              Type=oneshot
+              RemainAfterExit=yes
+              ExecStart=/bin/sh -c 'iptables -C INPUT -p tcp --dport 6053 ! -s 192.168.0.179 -j DROP 2>/dev/null || iptables -I INPUT 1 -p tcp --dport 6053 ! -s 192.168.0.179 -j DROP'
+              ExecStop=/bin/sh -c 'iptables -D INPUT -p tcp --dport 6053 ! -s 192.168.0.179 -j DROP 2>/dev/null || true'
+
+              [Install]
+              WantedBy=multi-user.target
+          register: bt_proxy_firewall_unit
+
+        - name: Enable the bt-proxy firewall unit
+          ansible.builtin.systemd:
+            name: bt-proxy-firewall
+            enabled: true
+            state: started
+            daemon_reload: "{{ bt_proxy_firewall_unit.changed }}"

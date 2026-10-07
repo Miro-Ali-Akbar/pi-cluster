@@ -1,0 +1,78 @@
+# Bluetooth proxy for Home Assistant (https://github.com/denvera/bt-proxy):
+# speaks the ESPHome native API, so HA treats this pod like an ESP32 Bluetooth
+# proxy. It lets HA, which runs on phone-1 with no usable local adapter, use
+# pi4's onboard adapter. Passive and active scanning work and so do GATT
+# connections (3 at a time); pairing does not.
+#
+# The ESPHome native API here is unencrypted and unauthenticated (bt-proxy has
+# neither), and hostNetwork exposes port 6053 on pi4's LAN address: anyone on
+# the LAN can use the proxy. pi4 therefore only accepts connections to 6053
+# from phone-1 (see rpi-cluster-ansible/local.yml).
+#
+# Home Assistant finds it by mDNS (_esphomelib._tcp), so hostNetwork is
+# required. Add it once in HA: Settings > Devices & services > ESPHome
+# (host 192.168.0.174, port 6053). The API is unencrypted: LAN only.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: bt-proxy
+  namespace: bt-proxy
+spec:
+  replicas: 1
+  strategy:
+    type: Recreate # one process owns the adapter
+  selector:
+    matchLabels:
+      app: bt-proxy
+  template:
+    metadata:
+      labels:
+        app: bt-proxy
+    spec:
+      nodeSelector:
+        kubernetes.io/hostname: pi4 # the node whose onboard adapter this uses
+      hostNetwork: true
+      dnsPolicy: ClusterFirstWithHostNet
+      containers:
+        - name: bt-proxy
+          # pinned by digest (multi-arch index, includes arm64)
+          image: ghcr.io/denvera/bt-proxy@sha256:f183376e87d0d40fa28ce3e55e8dff2e4ee0a15c046c68eafeab49a3b75b2864
+          args:
+            - --name=bt-proxy-pi4
+            - --adapter=hci0
+            - --port=6053
+            - --max-connections=3
+          ports:
+            - containerPort: 6053
+          # BlueZ is reached over the host's system D-Bus socket, mounted
+          # read-only below (same pattern as matter-server): no privileged
+          # mode, no capabilities.
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop: ["ALL"]
+          resources:
+            requests:
+              cpu: 25m
+              memory: 48Mi
+            limits:
+              memory: 128Mi
+          readinessProbe:
+            tcpSocket:
+              port: 6053
+            periodSeconds: 10
+          livenessProbe:
+            tcpSocket:
+              port: 6053
+            initialDelaySeconds: 30
+            periodSeconds: 30
+            failureThreshold: 4
+          volumeMounts:
+            - name: dbus
+              mountPath: /var/run/dbus
+              readOnly: true
+      volumes:
+        - name: dbus
+          hostPath:
+            path: /var/run/dbus
+            type: Directory
