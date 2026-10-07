@@ -4,7 +4,7 @@ metadata:
   name: home-assistant
   namespace: home-assistant
 spec:
-  replicas: 0 # stopped for the move to phone-1
+  replicas: 1
   strategy:
     type: Recreate # one pod owns the config directory on the node - never two at once
   selector:
