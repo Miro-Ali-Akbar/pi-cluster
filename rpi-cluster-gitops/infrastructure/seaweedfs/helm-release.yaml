@@ -78,7 +78,7 @@ spec:
           accessKeyKey: admin_access_key_id
           secretKeyKey: admin_secret_access_key
       nodeSelector: |
-        kubernetes.io/hostname: pi3-1
+        kubernetes.io/hostname: pi4
       logs:
         type: emptyDir
       resources:
