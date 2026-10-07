@@ -10,3 +10,4 @@ resources:
   - otbr
   - zigbee-bridge
   - bt-proxy
+  - monitoring
