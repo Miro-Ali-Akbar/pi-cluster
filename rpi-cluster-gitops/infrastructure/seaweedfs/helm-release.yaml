@@ -52,7 +52,7 @@ spec:
       dataCenter: ""
       rack: pi4-rack
       nodeSelector: |
-        kubernetes.io/hostname: pi3-1
+        kubernetes.io/hostname: pi3-2
       data:
         type: hostPath
         hostPathPrefix: /mnt/longhorn-disk1/seaweedfs-filer
