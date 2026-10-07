@@ -347,3 +347,44 @@
             enabled: true
             state: started
             daemon_reload: "{{ bt_proxy_firewall_unit.changed }}"
+
+    # --- pi4 and pi3-1: state that phone-1 pulls into /var/backups/cluster ---
+    # pi4 holds the K3s datastore and TLS material, pi3-1 the SeaweedFS master
+    # and filer metadata. phone-1's key may run only this export script, which
+    # streams a tar.gz to stdout.
+    - name: Allow phone-1 to pull a backup archive
+      when: ansible_hostname in ['pi4', 'pi3-1']
+      block:
+        - name: Install sqlite3 (consistent copy of the K3s datastore)
+          ansible.builtin.apt:
+            name: sqlite3
+            state: present
+          when: ansible_hostname == 'pi4'
+
+        - name: Install the backup export script
+          ansible.builtin.copy:
+            dest: /usr/local/sbin/cluster-backup-export
+            mode: "0755"
+            owner: root
+            group: root
+            content: |
+              #!/bin/bash
+              set -eu
+              tmp=$(mktemp -d -p /var/tmp)
+              trap 'rm -rf "$tmp"' EXIT
+              k3s=/var/lib/rancher/k3s/server
+              if [ -f "$k3s/db/state.db" ]; then
+                mkdir -p "$tmp/k3s"
+                sqlite3 "$k3s/db/state.db" ".backup '$tmp/k3s/state.db'"
+                cp -a "$k3s/tls" "$k3s/cred" "$k3s/token" "$tmp/k3s/"
+              fi
+              for d in seaweedfs-master seaweedfs-filer; do
+                [ -d "/mnt/longhorn-disk1/$d" ] && cp -a "/mnt/longhorn-disk1/$d" "$tmp/"
+              done
+              tar -C "$tmp" -czf - .
+
+        - name: Authorize phone-1's backup key for the export script only
+          ansible.posix.authorized_key:
+            user: root
+            key: "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIKo3F5WEjANQ3gdQXoOKxhvuad5p/UjbiefkpXRDquCV phone-1-cluster-backup"
+            key_options: 'command="/usr/local/sbin/cluster-backup-export",restrict'

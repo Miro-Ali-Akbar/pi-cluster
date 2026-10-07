@@ -1,0 +1,22 @@
+#!/bin/bash
+# Pull the state archives that pi4 (K3s datastore, TLS, token) and pi3-1 (SeaweedFS
+# master and filer metadata) export, and keep the newest 14 of each.
+set -u
+umask 077
+dest=/var/backups/cluster
+key=/root/.ssh/cluster-backup
+keep=14
+rc=0
+for host in pi4:192.168.0.174 pi3-1:192.168.0.104; do
+  name=${host%%:*}; ip=${host##*:}
+  mkdir -p "$dest/$name"
+  out="$dest/$name/$(date +%Y%m%d-%H%M%S).tar.gz"
+  if ssh -i "$key" -o BatchMode=yes -o IdentitiesOnly=yes -o StrictHostKeyChecking=accept-new -o ConnectTimeout=20 "root@$ip" true > "$out.part" 2> "$out.err" \
+     && tar -tzf "$out.part" > /dev/null; then
+    mv "$out.part" "$out"; rm -f "$out.err"
+  else
+    echo "backup of $name failed: $(cat "$out.err")" >&2; rm -f "$out.part" "$out.err"; rc=1
+  fi
+  ls -1t "$dest/$name"/*.tar.gz 2>/dev/null | tail -n +$((keep + 1)) | xargs -r rm --
+done
+exit $rc

@@ -1,0 +1,8 @@
+[Unit]
+Description=Pull cluster state backups from pi4 and pi3-1
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/sbin/cluster-backup
