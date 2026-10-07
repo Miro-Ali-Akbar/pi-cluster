@@ -5,7 +5,8 @@
 # router advertisements). BLE commissioning goes through the phone's own
 # Bluetooth: NOBLE_BINDINGS=dbus talks to the host's bluetoothd over
 # /run/dbus, unprivileged, no direct HCI socket access needed. Fabric data
-# lives in a hostPath on phone-1.
+# lives in a hostPath on phone-1. The D-Bus mount exposes the whole system
+# bus, so the container drops all capabilities and cannot gain privileges.
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -40,6 +41,10 @@ spec:
               value: "dbus"
             - name: BLUETOOTH_ADAPTER
               value: "0"
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop: [ALL]
           resources:
             requests:
               cpu: 100m
