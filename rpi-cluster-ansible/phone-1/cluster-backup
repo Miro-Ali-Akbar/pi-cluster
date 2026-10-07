@@ -5,7 +5,7 @@ set -u
 umask 077
 dest=/var/backups/cluster
 key=/root/.ssh/cluster-backup
-keep=14
+keep=28
 rc=0
 for host in pi4:192.168.0.174 pi3-1:192.168.0.104; do
   name=${host%%:*}; ip=${host##*:}

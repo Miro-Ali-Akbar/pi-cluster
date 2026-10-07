@@ -33,9 +33,9 @@ Flash with `fastboot erase dtbo` then `fastboot flash boot <image>` to the activ
   so the button cannot shut the node down. `systemctl kill -s USR1 power-screen` toggles it.
 - Desktop user services (pipewire, wireplumber, mmsd-tng and others) are masked. Idle draw is
   about 310 mA.
-- `cluster-backup.timer` (daily, about 04:10): pulls the K3s datastore, TLS keys and token from
+- `cluster-backup.timer` (every 6 hours at :10 past 00, 06, 12 and 18): pulls the K3s datastore, TLS keys and token from
   `pi4` and the SeaweedFS metadata from `pi3-1` into `/var/backups/cluster/<node>/`, mode 700,
-  14 kept, with the key `/root/.ssh/cluster-backup`.
+  28 kept, with the key `/root/.ssh/cluster-backup`.
 - `wifi-soak`: one CSV line per minute to `/var/log/wifi-soak.csv` (signal, loss and latency to pi4).
 - `linux-image-6.17.0-sm8150` and `phoc` are held. The GPU driver (`msm`) is not loaded.
 - K3s agent v1.36.3, node IP on `wlan0`, label `node-type=phone`, taint `node-type=phone:NoSchedule`,

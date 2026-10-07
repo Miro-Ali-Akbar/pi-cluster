@@ -32,7 +32,7 @@ secrets/               age private key for SOPS (gitignored, workstation only)
 - **kubectl:** `export KUBECONFIG=kubeconfig-pi4.yaml`.
 - **SSH:** user `master` with passwordless sudo on every node.
 - **Alerts:** Prometheus rules (node down or not Ready, low memory, full disk, crash loops, phone battery) go through Alertmanager to a Home Assistant webhook, which notifies the phone app.
-- **Backups:** `phone-1` pulls the K3s datastore, TLS material and token from `pi4`, and the SeaweedFS master and filer metadata from `pi3-1`, daily into `/var/backups/cluster` (14 kept). Home Assistant's own backups are mirrored to SeaweedFS every 6 hours.
+- **Backups:** `phone-1` pulls the K3s datastore, TLS material and token from `pi4`, and the SeaweedFS master and filer metadata from `pi3-1`, every 6 hours into `/var/backups/cluster` (28 kept, 7 days). Home Assistant's own backups are mirrored to SeaweedFS every 6 hours.
 
 ## Secrets
 
