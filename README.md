@@ -8,13 +8,13 @@ each boot, the phone with `rpi-cluster-ansible/phone-1/`, and apps deploy throug
 
 | Node | Hardware | RAM | Runs |
 | --- | --- | --- | --- |
-| `pi4` 192.168.0.174 | Raspberry Pi 4, 220 GB USB SSD | 2 GB | K3s server, SeaweedFS volumes and S3 gateway, NAS (Samba), bt-proxy |
-| `pi3-1` 192.168.0.104 | Raspberry Pi 3, SD card | 1 GB | SeaweedFS master and filer, Matter server, OTBR, Zigbee bridge (the dongles are plugged in here) |
-| `pi3-2` 192.168.0.176 | Raspberry Pi 3+, SD card | 1 GB | edge proxy (ports 80/443 are forwarded here), site-counters, a SeaweedFS volume |
-| `phone-1` 192.168.0.179 | OnePlus 7 Pro, Wi-Fi, 224 GB | 8 GB | Home Assistant, Flux controllers, Prometheus and Alertmanager, web server, CoreDNS replica |
+| `pi4` 192.168.0.174 | Raspberry Pi 4, 220 GB USB SSD | 2 GB | K3s server, SeaweedFS volumes and S3 gateway, NAS (Samba), bt-proxy; host: WireGuard VPN, DuckDNS updater |
+| `pi3-1` 192.168.0.104 | Raspberry Pi 3, SD card | 1 GB | SeaweedFS master and a volume, OTBR, Zigbee bridge (the dongles are plugged in here) |
+| `pi3-2` 192.168.0.176 | Raspberry Pi 3+, SD card | 1 GB | edge proxy (ports 80/443 are forwarded here), site-counters, SeaweedFS filer and a volume |
+| `phone-1` 192.168.0.179 | OnePlus 7 Pro, Wi-Fi, 224 GB | 8 GB | Home Assistant, Matter server, Flux controllers, Prometheus and Alertmanager, web server, CoreDNS replica |
 
 `phone-1` is tainted `node-type=phone:NoSchedule`; see `rpi-cluster-ansible/phone-1/README.md`.
-The Pis have little memory: `pi4` runs near its limit, `pi3-1` has about 150 MiB free.
+The Pis have little memory: `pi4` runs near its limit, `pi3-2` has the most free of the three.
 Put new workloads on `phone-1` first.
 
 ## Layout

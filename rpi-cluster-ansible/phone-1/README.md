@@ -40,8 +40,8 @@ Flash with `fastboot erase dtbo` then `fastboot flash boot <image>` to the activ
 - `linux-image-6.17.0-sm8150` and `phoc` are held. The GPU driver (`msm`) is not loaded.
 - K3s agent v1.36.3, node IP on `wlan0`, label `node-type=phone`, taint `node-type=phone:NoSchedule`,
   `fail-swap-on=false`, eviction below 600 MiB available.
-- Home Assistant's config is `/var/lib/home-assistant/config` and its certificates are
-  `/etc/letsencrypt`; both are hostPaths here.
+- Home Assistant's config is `/var/lib/home-assistant/config`, its certificates are
+  `/etc/letsencrypt`, and matter-server's fabric data is `/var/lib/matterjs-server/data`; all are hostPaths here.
 
 ## Not in git
 
