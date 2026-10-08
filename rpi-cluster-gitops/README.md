@@ -42,5 +42,5 @@ The K3s datastore can instead be restored from the phone's backup in `/var/backu
   ```
 - **pi4: K3s datastore and containerd** are bind-mounted from the SSD (`/mnt/longhorn-disk1/k3s-server-db` onto `/var/lib/rancher/k3s/server/db`, `/mnt/longhorn-disk1/k3s-agent-containerd` onto `/var/lib/rancher/k3s/agent/containerd`) through `/etc/fstab`. The pre-move copies are `db.bak-sdcard` and `containerd.bak-sdcard`.
 - **pi4: DuckDNS updater** (`duckdns-update.timer`).
-- **pi4: WireGuard** (`/etc/wireguard/wg0.conf`, `thearmorassistant.duckdns.org:51820`) is the only remote path into the cluster. Its config is in the `guide-to-my-life` repo, not here.
+- **pi4: WireGuard** (`/etc/wireguard/wg0.conf`, `thearmorassistant.duckdns.org:51820`) is the only remote path into the cluster. `wg0` is 10.200.0.1/29 and masquerades the VPN subnet onto the LAN, so a peer whose allowed IPs include `192.168.0.0/24` reaches every node. The workstation's NetworkManager connection `nas` (10.200.0.2) does: it autoconnects, keepalive 25, with routes at metric 700, so the LAN is used directly at home and the tunnel only when away. Its config is in the `guide-to-my-life` repo, not here.
 - **pi4 and pi3-1: `/usr/local/sbin/cluster-backup-export`** and the phone's restricted root key, installed by `local.yml`.
