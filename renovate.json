@@ -1,0 +1,13 @@
+{
+  "$schema": "https://docs.renovatebot.com/renovate-schema.json",
+  "extends": ["config:recommended", "docker:pinDigests"],
+  "flux": {
+    "managerFilePatterns": ["/^rpi-cluster-gitops/(clusters|infrastructure)/.+\\.ya?ml$/"]
+  },
+  "kubernetes": {
+    "managerFilePatterns": ["/^rpi-cluster-gitops/(apps|infrastructure)/.+\\.ya?ml$/"]
+  },
+  "schedule": ["before 7am on saturday"],
+  "prConcurrentLimit": 3,
+  "labels": ["dependencies"]
+}

@@ -53,7 +53,7 @@ spec:
               mountPath: /git
       containers:
         - name: nginx
-          image: nginx:stable
+          image: nginx:stable@sha256:9bf97bd7714f5e24c1ccd545ecb9eb5435cb6d109c97cebb15e7e455e0239edb
           ports:
             - containerPort: 80
           resources:

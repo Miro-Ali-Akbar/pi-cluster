@@ -19,7 +19,7 @@ spec:
         kubernetes.io/hostname: pi3-2 # pi3-1 has no SeaweedFS CSI driver (kept off it to protect its tight memory headroom)
       containers:
         - name: counters
-          image: python:3.12-alpine
+          image: python:3.12-alpine@sha256:b64631e04e4920160c50fbe8d8df828f7f35f06f425cb44aa09bca53e708a35a
           command: ["python", "/app/app.py"]
           ports:
             - containerPort: 8080
