@@ -41,6 +41,10 @@ Alternative to step 2: restore the K3s datastore from `/var/backups/cluster/pi4`
   sudo systemctl daemon-reload
   ```
 - **pi4: K3s datastore and containerd** are bind-mounted from the SSD (`/mnt/longhorn-disk1/k3s-server-db` onto `/var/lib/rancher/k3s/server/db`, `/mnt/longhorn-disk1/k3s-agent-containerd` onto `/var/lib/rancher/k3s/agent/containerd`) through `/etc/fstab`. The pre-move copies are `db.bak-sdcard` and `containerd.bak-sdcard`.
+- **pi4: WireGuard** (`wg0`, 10.200.0.1/29, UDP 51820 forwarded by the router) is the only remote path into the cluster, and masquerades the VPN subnet onto the LAN. A peer whose allowed IPs include `192.168.0.0/24` reaches every node: the workstation's NetworkManager connection `nas` (10.200.0.2, keepalive 25, metric 700) does. The server config is SOPS-encrypted in `rpi-cluster-ansible/wireguard/pi4-wg0.sops.yaml`. Restore:
+  ```
+  SOPS_AGE_KEY_FILE=secrets/age.key sops --decrypt --input-type yaml --output-type binary rpi-cluster-ansible/wireguard/pi4-wg0.sops.yaml | ssh master@192.168.0.174 'sudo install -m 600 /dev/stdin /etc/wireguard/wg0.conf && sudo systemctl enable --now wg-quick@wg0'
+  ```
 - **pi4: DuckDNS updater** (`duckdns-update.timer`).
-- **pi4: WireGuard** (`/etc/wireguard/wg0.conf`, `thearmorassistant.duckdns.org:51820`) is the only remote path into the cluster. `wg0` is 10.200.0.1/29 and masquerades the VPN subnet onto the LAN, so a peer whose allowed IPs include `192.168.0.0/24` reaches every node. The workstation's NetworkManager connection `nas` (10.200.0.2) does: it autoconnects, keepalive 25, with routes at metric 700, so the LAN is used directly at home and the tunnel only when away. Its config is in the `guide-to-my-life` repo, not here.
 - **pi4 and pi3-1: `/usr/local/sbin/cluster-backup-export`** and the phone's restricted root key, installed by `local.yml`.
+- **All Pis: `smart-metrics.timer`** writes SMART health of the USB disks for node-exporter (`/var/lib/node_exporter`), installed by `local.yml`. `local.yml` never partitions or formats a disk that already holds a filesystem.
