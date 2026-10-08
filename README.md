@@ -4,10 +4,10 @@ K3s on three Raspberry Pis and one phone: home automation and Zigbee/Matter/Thre
 
 | Node | Hardware | RAM | Runs |
 | --- | --- | --- | --- |
-| `pi4` 192.168.0.174 | Pi 4, 220 GB USB SSD | 2 GB | K3s server, SeaweedFS volumes and S3, NAS (Samba), bt-proxy; host: WireGuard, DuckDNS updater |
+| `pi4` 192.168.0.174 | Pi 4, 220 GB USB SSD | 2 GB | K3s agent (old server data kept as the standby), SeaweedFS volumes and S3, NAS (Samba), bt-proxy; host: WireGuard, DuckDNS updater |
 | `pi3-1` 192.168.0.104 | Pi 3, SD | 1 GB | SeaweedFS master and a volume, OTBR, Zigbee bridge (dongles here) |
 | `pi3-2` 192.168.0.176 | Pi 3+, SD | 1 GB | edge proxy (80/443 forwarded here), site-counters, SeaweedFS filer and a volume |
-| `phone-1` 192.168.0.179 | OnePlus 7 Pro, Wi-Fi, 224 GB | 8 GB | Home Assistant, Matter server, Flux, Prometheus, Alertmanager, web server, CoreDNS replica |
+| `phone-1` 192.168.0.179 | OnePlus 7 Pro, Wi-Fi, 224 GB | 8 GB | K3s server, Home Assistant, Matter server, Flux, Prometheus, Alertmanager, web server, CoreDNS replica |
 
 The Pis are memory-tight; put new workloads on `phone-1` (tainted `node-type=phone:NoSchedule`).
 
@@ -23,9 +23,10 @@ secrets/               age private key (gitignored, workstation only)
 
 - **App change:** commit under `rpi-cluster-gitops/`, push to `main`.
 - **Node change:** edit `local.yml`; apply now with `ssh master@<node> sudo systemctl start ansible-pull`.
-- **kubectl:** `export KUBECONFIG=kubeconfig-pi4.yaml`. **SSH:** `master`, passwordless sudo, every node.
+- **kubectl:** `export KUBECONFIG=kubeconfig.yaml` (admin credentials, gitignored; copy of `/etc/rancher/k3s/k3s.yaml` on `phone-1` with the server set to `https://192.168.0.179:6443`). **SSH:** `master`, passwordless sudo, every node.
 - **Alerts:** Prometheus rules (node down or not Ready, low memory, full disk, crash loops, phone battery) -> Alertmanager -> Home Assistant webhook -> phone notification.
-- **Backups:** `phone-1` pulls the K3s datastore, TLS keys and token (`pi4`) and SeaweedFS master/filer metadata (`pi3-1`) every 6 h into `/var/backups/cluster` (28 kept). HA's own backups mirror to SeaweedFS every 6 h.
+- **Backups** (every 6 h, 28 kept, in `/var/backups/cluster/<node>` on `phone-1`): its own K3s datastore, TLS keys and token; SeaweedFS master metadata from `pi3-1` and filer metadata from `pi3-2`. The K3s archive is also pushed to `pi4` (`/var/backups/cluster-standby`, 14 kept). HA's own backups mirror to SeaweedFS every 6 h.
+- **Failover** (`phone-1` dead): on `pi4`, `sudo systemctl disable --now k3s-agent`; unpack the newest `/var/backups/cluster-standby` archive into `/var/lib/rancher/k3s/server/` (`k3s/state.db` to `db/state.db`, plus `tls`, `cred`, `token`); `sudo mv /etc/rancher/k3s/config.yaml.server-standby /etc/rancher/k3s/config.yaml`; `sudo systemctl enable --now k3s`; on `pi3-1` and `pi3-2` set `K3S_URL` in `/etc/systemd/system/k3s-agent.service.env` to `https://192.168.0.174:6443` and restart `k3s-agent`. Home Assistant and the other `phone-1` workloads stay down until `phone-1` is back.
 
 ## Secrets
 

@@ -25,12 +25,12 @@ SeaweedFS with one StorageClass, `seaweedfs-storage`: volume servers pinned per 
 
 ## Disaster recovery
 
-1. Provision the nodes (`ansible-pull`; the phone with `phone-1/provision.sh`).
+1. Provision the nodes: the phone first with `phone-1/provision.sh` (it is the K3s server), then the Pis (`ansible-pull`; they join `phone-1`).
 2. `flux bootstrap github --owner=Miro-Ali-Akbar --repository=pi-cluster --path=rpi-cluster-gitops/clusters/my-cluster` (needs a write-scoped `GITHUB_TOKEN`).
 3. Create the decryption key: `kubectl -n flux-system create secret generic sops-age --from-file=age.agekey=secrets/age.key`.
 4. Restore HA's config on `phone-1` from backup; re-issue certificates with the one-time `certbot-issue*` jobs (deliberately in no kustomization).
 
-Alternative to step 2: restore the K3s datastore from `/var/backups/cluster/pi4` on the phone.
+Alternative to step 2: restore the K3s datastore from `/var/backups/cluster/phone-1` (or `pi4:/var/backups/cluster-standby`); see Failover in the root README.
 
 ## Host-level config (not managed by Flux, lost on reflash)
 
