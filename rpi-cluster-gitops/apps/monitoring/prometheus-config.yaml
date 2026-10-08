@@ -81,6 +81,20 @@ data:
             for: 15m
             annotations:
               summary: "SeaweedFS {{ $labels.pod }} disk {{ $labels.name }} has under 10% free"
+          - alert: DiskSmartFailed
+            expr: smart_health_ok == 0
+            for: 5m
+            annotations:
+              summary: "{{ $labels.node }} {{ $labels.device }} ({{ $labels.model }}) failed its SMART health check: replace it"
+          - alert: DiskSectorsBad
+            expr: smart_pending_sectors > 0 or increase(smart_reallocated_sectors[7d]) > 0
+            annotations:
+              summary: "{{ $labels.node }} {{ $labels.device }} ({{ $labels.model }}) has bad or growing reallocated sectors"
+          - alert: DiskHot
+            expr: smart_temperature_celsius > 60
+            for: 15m
+            annotations:
+              summary: "{{ $labels.node }} {{ $labels.device }} is at {{ $value }} C"
           - alert: NodeNotReady
             expr: kube_node_status_condition{condition="Ready",status="true"} == 0
             for: 3m

@@ -376,3 +376,85 @@
             user: root
             key: "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIKo3F5WEjANQ3gdQXoOKxhvuad5p/UjbiefkpXRDquCV phone-1-cluster-backup"
             key_options: 'command="/usr/local/sbin/cluster-backup-export",restrict'
+
+    # --- every Pi: disk health metrics for Prometheus, no iSCSI ---
+    # SMART data from the USB SSDs goes to node-exporter's textfile collector
+    # (the DaemonSet mounts /var/lib/node_exporter); alerts are in
+    # rpi-cluster-gitops/apps/monitoring/prometheus-config.yaml.
+    - name: Disk health metrics
+      block:
+        - name: Install smartmontools
+          ansible.builtin.apt:
+            name: smartmontools
+            state: present
+
+        - name: Install the SMART metrics script
+          ansible.builtin.copy:
+            dest: /usr/local/sbin/smart-metrics
+            mode: "0755"
+            owner: root
+            group: root
+            content: |
+              #!/bin/bash
+              # Writes SMART health, reallocated/pending sectors, temperature and power-on hours
+              # of every USB disk as Prometheus textfile metrics.
+              set -u
+              dir=/var/lib/node_exporter
+              mkdir -p "$dir"
+              tmp=$(mktemp -p "$dir" .smart.XXXXXX)
+              {
+                for d in $(lsblk -dno NAME,TRAN | awk '$2=="usb"{print $1}'); do
+                  model=$(lsblk -dno MODEL "/dev/$d" | sed 's/ *$//; s/"//g')
+                  l="device=\"$d\",model=\"$model\""
+                  health=$(smartctl -H -d sat "/dev/$d" 2>&1 | grep -c 'PASSED')
+                  echo "smart_health_ok{$l} $health"
+                  attrs=$(smartctl -A -d sat "/dev/$d" 2>&1)
+                  for pair in 5:smart_reallocated_sectors 197:smart_pending_sectors 194:smart_temperature_celsius 9:smart_power_on_hours; do
+                    v=$(echo "$attrs" | awk -v id="${pair%%:*}" '$1==id{print $10; exit}')
+                    [ -n "$v" ] && echo "${pair##*:}{$l} $v"
+                  done
+                done
+              } > "$tmp"
+              chmod 644 "$tmp"
+              mv "$tmp" "$dir/smart.prom"
+
+        - name: Install the SMART metrics timer
+          ansible.builtin.copy:
+            dest: "/etc/systemd/system/{{ item.name }}"
+            mode: "0644"
+            content: "{{ item.content }}"
+          loop:
+            - name: smart-metrics.service
+              content: |
+                [Unit]
+                Description=Write SMART disk metrics for node-exporter
+
+                [Service]
+                Type=oneshot
+                ExecStart=/usr/local/sbin/smart-metrics
+            - name: smart-metrics.timer
+              content: |
+                [Unit]
+                Description=SMART disk metrics every 10 minutes
+
+                [Timer]
+                OnBootSec=2min
+                OnUnitActiveSec=10min
+
+                [Install]
+                WantedBy=timers.target
+          register: smart_units
+
+        - name: Enable the SMART metrics timer
+          ansible.builtin.systemd:
+            name: smart-metrics.timer
+            enabled: true
+            state: started
+            daemon_reload: "{{ smart_units.changed }}"
+
+        - name: Remove open-iscsi (left over from Longhorn, no sessions)
+          ansible.builtin.apt:
+            name: open-iscsi
+            state: absent
+            purge: true
+            autoremove: true
