@@ -120,25 +120,30 @@
             path: "{{ ssd_partition_path }}"
           register: ssd_partition
 
-        - name: Partition the SSD (whole-disk, ext4) if none exists yet
+        # The data disks carry a filesystem on the whole device (no partition
+        # table) and are mounted by /etc/fstab. A missing -part1 therefore does
+        # not mean "blank": never partition or format a device that already
+        # holds a filesystem.
+        - name: Check whether the SSD already holds a filesystem
+          ansible.builtin.shell: lsblk -no FSTYPE "{{ ssd_device }}" "{{ ssd_partition_path }}" 2>/dev/null | grep -c .
+          register: ssd_has_fs
+          changed_when: false
+          failed_when: false
+
+        - name: Partition the SSD (whole-disk, ext4) if it is blank
           community.general.parted:
             device: "{{ ssd_device }}"
             number: 1
             state: present
             fs_type: ext4
-          when: not ssd_partition.stat.exists
+          when: not ssd_partition.stat.exists and ssd_has_fs.stdout | trim == '0'
 
-        - name: Format freshly-partitioned SSD as ext4 (wipe any stale signature)
+        - name: Format freshly-partitioned SSD as ext4
           community.general.filesystem:
             fstype: ext4
             dev: "{{ ssd_partition_path }}"
-            # Repurposing external drives for cluster storage - a prior
-            # filesystem signature (e.g. leftover NTFS) is expected on first
-            # use. Only force here, on a partition we just created - never on
-            # later idempotent re-runs, where the drive is likely mounted and
-            # in active use.
             force: true
-          when: not ssd_partition.stat.exists
+          when: not ssd_partition.stat.exists and ssd_has_fs.stdout | trim == '0'
           register: ssd_format_fresh
 
         - name: Ensure SSD stays ext4 (idempotent, no force)
@@ -160,6 +165,7 @@
             src: "{{ ssd_partition_path }}"
             fstype: ext4
             state: mounted
+          when: ssd_partition.stat.exists or ssd_has_fs.stdout | trim == '0'
 
         - name: Ensure /etc/rancher/k3s exists
           ansible.builtin.file:
@@ -244,22 +250,29 @@
                 path: "{{ usb_hdd_partition }}"
               register: hdd_partition
 
-            - name: Partition the USB HDD (whole-disk, ext4) if none exists yet
+            # Data disks hold a filesystem on the whole device, mounted by
+            # /etc/fstab: a missing -part1 does not mean "blank". Never
+            # partition or format a device that already holds a filesystem.
+            - name: Check whether the USB disk already holds a filesystem
+              ansible.builtin.shell: lsblk -no FSTYPE "{{ usb_hdd_device }}" "{{ usb_hdd_partition }}" 2>/dev/null | grep -c .
+              register: hdd_has_fs
+              changed_when: false
+              failed_when: false
+
+            - name: Partition the USB HDD (whole-disk, ext4) if it is blank
               community.general.parted:
                 device: "{{ usb_hdd_device }}"
                 number: 1
                 state: present
                 fs_type: ext4
-              when: not hdd_partition.stat.exists
+              when: not hdd_partition.stat.exists and hdd_has_fs.stdout | trim == '0'
 
-            - name: Format freshly-partitioned USB HDD as ext4 (wipe any stale signature)
+            - name: Format freshly-partitioned USB HDD as ext4
               community.general.filesystem:
                 fstype: ext4
                 dev: "{{ usb_hdd_partition }}"
-                # Only force on a partition we just created - never on later
-                # idempotent re-runs, where the drive is likely mounted.
                 force: true
-              when: not hdd_partition.stat.exists
+              when: not hdd_partition.stat.exists and hdd_has_fs.stdout | trim == '0'
               register: hdd_format_fresh
 
             - name: Ensure USB HDD stays ext4 (idempotent, no force)
@@ -281,6 +294,7 @@
                 src: "{{ usb_hdd_partition }}"
                 fstype: ext4
                 state: mounted
+              when: hdd_partition.stat.exists or hdd_has_fs.stdout | trim == '0'
 
         - name: Check if K3s agent is already installed
           ansible.builtin.stat:
