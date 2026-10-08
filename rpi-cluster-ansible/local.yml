@@ -14,6 +14,10 @@
     # Fill in with the Pi 4's reserved DHCP IP before flashing the SD cards,
     # or override with --extra-vars on ansible-pull.
     pi4_local_ip: "REPLACE_WITH_PI4_IP"
+    # The K3s server runs on phone-1 (provision.sh); pi4 is an agent, with its
+    # old server data kept as a cold standby. Agents join and fetch the token there.
+    k3s_server_ip: 192.168.0.179
+    k3s_version: "v1.36.5+k3s1"
     cluster_ssh_key: /etc/rpi-cluster/id_ed25519
     # RAM-based auto-detection is just a default - real hardware doesn't always
     # match the plan's assumed SKUs (e.g. a 2GB Pi 4 doing control-plane duty).
@@ -167,48 +171,53 @@
             state: mounted
           when: ssd_partition.stat.exists or ssd_has_fs.stdout | trim == '0'
 
-        - name: Ensure /etc/rancher/k3s exists
-          ansible.builtin.file:
-            path: /etc/rancher/k3s
-            state: directory
-            mode: "0755"
+        # K3s server tasks: only on the node that is the server (phone-1 is, and
+        # is not provisioned by this playbook), so they are skipped on pi4.
+        - name: K3s server tasks (skipped unless this node is the server)
+          when: ansible_default_ipv4.address == k3s_server_ip
+          block:
+            - name: Ensure /etc/rancher/k3s exists
+              ansible.builtin.file:
+                path: /etc/rancher/k3s
+                state: directory
+                mode: "0755"
 
-        - name: Disable unneeded k3s bundled components (traefik, metrics-server)
-          # Neither is used here (no Ingress, no HPA/kubectl top) - each is a
-          # whole extra pod competing for memory on a 2GB node. This is a
-          # config file, not an install flag, so it also applies on nodes
-          # that were already provisioned before this was added - re-running
-          # ansible-pull picks it up, just restart k3s afterward to apply.
-          ansible.builtin.copy:
-            dest: /etc/rancher/k3s/config.yaml
-            mode: "0644"
-            content: |
-              disable:
-                - traefik
-                - metrics-server
+            - name: Disable unneeded k3s bundled components (traefik, metrics-server)
+              # Neither is used here (no Ingress, no HPA/kubectl top) - each is a
+              # whole extra pod competing for memory on a 2GB node. This is a
+              # config file, not an install flag, so it also applies on nodes
+              # that were already provisioned before this was added - re-running
+              # ansible-pull picks it up, just restart k3s afterward to apply.
+              ansible.builtin.copy:
+                dest: /etc/rancher/k3s/config.yaml
+                mode: "0644"
+                content: |
+                  disable:
+                    - traefik
+                    - metrics-server
 
-        - name: Check if K3s server is already installed
-          ansible.builtin.stat:
-            path: /usr/local/bin/k3s
-          register: k3s_installed
+            - name: Check if K3s server is already installed
+              ansible.builtin.stat:
+                path: /usr/local/bin/k3s
+              register: k3s_installed
 
-        - name: Install K3s server (control plane, local-storage disabled)
-          ansible.builtin.shell: |
-            curl -sfL https://get.k3s.io | sh -s - --disable local-storage
-          when: not k3s_installed.stat.exists
+            - name: Install K3s server (control plane, local-storage disabled)
+              ansible.builtin.shell: |
+                curl -sfL https://get.k3s.io | sh -s - --disable local-storage
+              when: not k3s_installed.stat.exists
 
-        - name: Restrict node-token to root, readable only over the trusted cluster SSH key
-          ansible.builtin.file:
-            path: /var/lib/rancher/k3s/server/node-token
-            mode: "0600"
-            owner: root
-            group: root
+            - name: Restrict node-token to root, readable only over the trusted cluster SSH key
+              ansible.builtin.file:
+                path: /var/lib/rancher/k3s/server/node-token
+                mode: "0600"
+                owner: root
+                group: root
 
-        - name: Authorize the cluster deploy key for root-only SSH pull of the token
-          ansible.posix.authorized_key:
-            user: root
-            key: "{{ lookup('file', cluster_ssh_key + '.pub') }}"
-            key_options: 'command="cat /var/lib/rancher/k3s/server/node-token",no-port-forwarding,no-agent-forwarding,no-X11-forwarding'
+            - name: Authorize the cluster deploy key for root-only SSH pull of the token
+              ansible.posix.authorized_key:
+                user: root
+                key: "{{ lookup('file', cluster_ssh_key + '.pub') }}"
+                key_options: 'command="cat /var/lib/rancher/k3s/server/node-token",no-port-forwarding,no-agent-forwarding,no-X11-forwarding'
 
     # --- Pi 3 (worker) role ---
     - name: Worker role tasks
@@ -296,15 +305,19 @@
                 state: mounted
               when: hdd_partition.stat.exists or hdd_has_fs.stdout | trim == '0'
 
-        - name: Check if K3s agent is already installed
+    # --- every Pi: join the cluster as an agent of the K3s server on phone-1 ---
+    - name: Join K3s as an agent
+      when: ansible_default_ipv4.address != k3s_server_ip
+      block:
+        - name: Check if the K3s agent is already installed
           ansible.builtin.stat:
-            path: /usr/local/bin/k3s-agent
+            path: /etc/systemd/system/k3s-agent.service
           register: k3s_agent_installed
 
-        - name: Fetch node token from the control plane over the restricted deploy key
+        - name: Fetch the node token from the server over the restricted deploy key
           ansible.builtin.command: >
             ssh -i {{ cluster_ssh_key }} -o StrictHostKeyChecking=accept-new
-            root@{{ pi4_local_ip }} true
+            root@{{ k3s_server_ip }} true
           register: worker_node_token
           changed_when: false
           when: not k3s_agent_installed.stat.exists
@@ -312,7 +325,8 @@
         - name: Join K3s cluster as agent
           ansible.builtin.shell: >
             curl -sfL https://get.k3s.io |
-            K3S_URL=https://{{ pi4_local_ip }}:{{ k3s_server_port }}
+            INSTALL_K3S_VERSION={{ k3s_version }}
+            K3S_URL=https://{{ k3s_server_ip }}:{{ k3s_server_port }}
             K3S_TOKEN={{ worker_node_token.stdout | trim }}
             sh -s - agent
           when: not k3s_agent_installed.stat.exists

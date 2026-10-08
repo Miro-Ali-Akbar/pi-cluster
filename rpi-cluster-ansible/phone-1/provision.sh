@@ -1,6 +1,6 @@
 #!/bin/bash
 # Host setup for phone-1 (OnePlus 7 Pro running the Nethunter Pro port). Run as root on the phone,
-# after the Wi-Fi profile exists (see README.md) and with the cluster join token in $K3S_TOKEN.
+# after the Wi-Fi profile exists (see README.md).
 set -euo pipefail
 cd "$(dirname "$0")"
 
@@ -40,11 +40,20 @@ install -m 644 battery-limiter.service screen-off.service power-screen.service w
 systemctl daemon-reload
 systemctl enable --now battery-limiter screen-off power-screen wifi-soak cluster-backup.timer
 
-# K3s agent: tainted so only tolerating workloads land here; zram swap kept
-: "${K3S_TOKEN:?set K3S_TOKEN}"
+# K3s server (the cluster's control plane). For a rebuild, restore the datastore first:
+# extract the newest /var/backups/cluster/pi4-or-phone archive's k3s/{state.db,tls,cred,token} into
+# /var/lib/rancher/k3s/server/{db/state.db,tls,cred,token}; K3S_START=true starts it.
+# Tainted so only tolerating workloads land here; zram swap kept.
 NODE_IP=$(ip -4 -o addr show wlan0 | awk '{print $4}' | cut -d/ -f1)
-curl -sfL https://get.k3s.io | INSTALL_K3S_VERSION="v1.36.3+k3s1" K3S_URL="https://192.168.0.174:6443" K3S_TOKEN="$K3S_TOKEN" \
-  INSTALL_K3S_EXEC="agent --node-name phone-1 --node-ip $NODE_IP --flannel-iface wlan0 --node-label node-type=phone --node-taint node-type=phone:NoSchedule --kubelet-arg=fail-swap-on=false --kubelet-arg=eviction-hard=memory.available<600Mi --kubelet-arg=system-reserved=memory=400Mi" sh -s -
+curl -sfL https://get.k3s.io | INSTALL_K3S_VERSION="v1.36.5+k3s1" INSTALL_K3S_SKIP_START="$([ "${K3S_START:-}" = true ] && echo false || echo true)" \
+  INSTALL_K3S_EXEC="server --node-name phone-1 --node-ip $NODE_IP --advertise-address $NODE_IP --tls-san $NODE_IP --flannel-iface wlan0 --node-label node-type=phone --node-taint node-type=phone:NoSchedule --kubelet-arg=fail-swap-on=false --kubelet-arg=eviction-hard=memory.available<600Mi --kubelet-arg=system-reserved=memory=400Mi --disable traefik --disable metrics-server --disable local-storage --write-kubeconfig-mode 600" sh -s -
+
+# New Pis fetch the join token over SSH with the cluster deploy key; allow only that one command.
+if [ -n "${CLUSTER_PUBKEY:-}" ]; then
+  install -d -m 700 /root/.ssh
+  grep -qF "$CLUSTER_PUBKEY" /root/.ssh/authorized_keys 2>/dev/null || \
+    echo "command=\"cat /var/lib/rancher/k3s/server/node-token\",no-port-forwarding,no-agent-forwarding,no-X11-forwarding $CLUSTER_PUBKEY" >> /root/.ssh/authorized_keys
+fi
 
 # Login user: master with passwordless sudo, like the Pis (the image ships user kali).
 # Run the rename from a transient unit: it kills the user's sessions, including this one.
