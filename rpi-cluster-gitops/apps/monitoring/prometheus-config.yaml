@@ -29,6 +29,22 @@ data:
           - source_labels: [__meta_kubernetes_pod_host_ip]
             replacement: "$1:9100"
             target_label: __address__
+      - job_name: seaweedfs
+        kubernetes_sd_configs:
+          - role: endpoints
+            namespaces:
+              names: [seaweedfs]
+        relabel_configs:
+          - source_labels: [__meta_kubernetes_endpoint_port_number]
+            regex: "9327"
+            action: keep
+          - source_labels: [__meta_kubernetes_service_name]
+            regex: seaweedfs-filer-client
+            action: drop
+          - source_labels: [__meta_kubernetes_endpoint_hostname]
+            target_label: pod
+          - source_labels: [__meta_kubernetes_endpoint_node_name]
+            target_label: node
       - job_name: kube-state-metrics
         static_configs:
           - targets: ["kube-state-metrics.monitoring.svc:8080"]
@@ -44,6 +60,27 @@ data:
             for: 3m
             annotations:
               summary: "{{ $labels.job }} target {{ $labels.instance }} is down"
+          - alert: SeaweedFSDown
+            expr: up{job="seaweedfs"} == 0
+            for: 3m
+            annotations:
+              summary: "SeaweedFS {{ $labels.pod }} is down (a disk or its node may have failed)"
+          - alert: SeaweedFSUnderReplicated
+            expr: sum(SeaweedFS_master_under_replicated_volumes) > 0
+            for: 15m
+            annotations:
+              summary: "{{ $value }} SeaweedFS volumes have fewer than 2 copies"
+          - alert: SeaweedFSDiskIOError
+            expr: increase(SeaweedFS_volumeServer_storage_io_error_total[1h]) > 0
+            annotations:
+              summary: "SeaweedFS {{ $labels.pod }} reported disk I/O errors"
+          - alert: SeaweedFSDiskFilling
+            expr: >
+              SeaweedFS_volumeServer_resource{type="avail"}
+              / SeaweedFS_volumeServer_resource{type="all"} < 0.10
+            for: 15m
+            annotations:
+              summary: "SeaweedFS {{ $labels.pod }} disk {{ $labels.name }} has under 10% free"
           - alert: NodeNotReady
             expr: kube_node_status_condition{condition="Ready",status="true"} == 0
             for: 3m
