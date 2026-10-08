@@ -77,6 +77,8 @@ spec:
             - --root=/git
             - --link=website
             - --period=60s
+            # retry through DNS or network blips instead of exiting (default aborts on the first failed fetch)
+            - --max-failures=-1
           resources:
             requests:
               cpu: 25m
