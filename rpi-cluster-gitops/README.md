@@ -17,7 +17,7 @@ The Flux controllers run on `phone-1` (`clusters/my-cluster/flux-system/on-phone
 - Hardware-tied apps select `kubernetes.io/hostname: <node>` (`otbr`, `zigbee-bridge` on `pi3-1`; `bt-proxy` on `pi4`).
 - `phone-1` is tainted `node-type=phone:NoSchedule`. Apps there select it and tolerate the taint: Home Assistant, matter-server, Flux, monitoring, web-server, coredns-phone, the certbot and backup jobs.
 - Home Assistant uses hostPaths on `phone-1` (`/var/lib/home-assistant/config`, `/etc/letsencrypt`), runs with `hostNetwork`, and reaches Zigbee (ser2net on `pi3-1`, port 6638), Matter (matter-server on `phone-1`, port 5580; it reaches the Thread devices through OTBR on `pi3-1`, and has no Bluetooth, so new devices cannot be commissioned over BLE from it) and Bluetooth (bt-proxy on `pi4`, port 6053) over the network.
-- `bt-proxy`'s API has no authentication: `pi4` drops connections to port 6053 from any address but `phone-1` (`bt-proxy-firewall.service`, installed by `local.yml`).
+- `bt-proxy`'s API is unauthenticated: `pi4` drops port 6053 from all but `phone-1` (`bt-proxy-firewall.service`, from `local.yml`).
 
 ## Storage
 
@@ -28,9 +28,9 @@ SeaweedFS with one StorageClass, `seaweedfs-storage`: volume servers pinned per 
 1. Provision the nodes (`ansible-pull`; the phone with `phone-1/provision.sh`).
 2. `flux bootstrap github --owner=Miro-Ali-Akbar --repository=pi-cluster --path=rpi-cluster-gitops/clusters/my-cluster` (needs a write-scoped `GITHUB_TOKEN`).
 3. Create the decryption key: `kubectl -n flux-system create secret generic sops-age --from-file=age.agekey=secrets/age.key`.
-4. Restore Home Assistant's config on `phone-1` from its backup, and re-issue certificates with the one-time `certbot-issue*` jobs (not in a kustomization on purpose).
+4. Restore HA's config on `phone-1` from backup; re-issue certificates with the one-time `certbot-issue*` jobs (deliberately in no kustomization).
 
-The K3s datastore can instead be restored from the phone's backup in `/var/backups/cluster/pi4`.
+Alternative to step 2: restore the K3s datastore from `/var/backups/cluster/pi4` on the phone.
 
 ## Host-level config (not managed by Flux, lost on reflash)
 
