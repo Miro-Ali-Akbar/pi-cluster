@@ -1,13 +1,34 @@
 #!/bin/bash
-# Pull the state archives that pi4 (K3s datastore, TLS, token) and pi3-1 (SeaweedFS
-# master and filer metadata) export, and keep the newest 14 of each.
+# Archive the K3s datastore, TLS keys and token (this node is the K3s server), pull the SeaweedFS
+# master/filer metadata from pi3-1 and pi3-2, and push the K3s archive to pi4 as the standby copy.
+# Keeps the newest 28 of each.
 set -u
 umask 077
 dest=/var/backups/cluster
 key=/root/.ssh/cluster-backup
+push_key=/root/.ssh/standby-push
 keep=28
 rc=0
-for host in pi4:192.168.0.174 pi3-1:192.168.0.104; do
+prune() { ls -1t "$1"/*.tar.gz 2>/dev/null | tail -n +$((keep + 1)) | xargs -r rm --; }
+
+# K3s server state (consistent copy of the sqlite datastore)
+name=phone-1; mkdir -p "$dest/$name"
+tmp=$(mktemp -d -p /var/tmp); trap 'rm -rf "$tmp"' EXIT
+k3s=/var/lib/rancher/k3s/server
+out="$dest/$name/$(date +%Y%m%d-%H%M%S).tar.gz"
+mkdir -p "$tmp/k3s"
+if sqlite3 "$k3s/db/state.db" ".backup '$tmp/k3s/state.db'" && cp -a "$k3s/tls" "$k3s/cred" "$k3s/token" "$tmp/k3s/" && tar -C "$tmp" -czf "$out.part" . && tar -tzf "$out.part" > /dev/null; then
+  mv "$out.part" "$out"
+  if [ -f "$push_key" ]; then
+    ssh -i "$push_key" -o BatchMode=yes -o IdentitiesOnly=yes -o StrictHostKeyChecking=accept-new -o ConnectTimeout=20 master@192.168.0.174 < "$out" || { echo "standby push to pi4 failed" >&2; rc=1; }
+  fi
+else
+  echo "backup of the K3s datastore failed" >&2; rm -f "$out.part"; rc=1
+fi
+prune "$dest/$name"
+
+# SeaweedFS metadata from the Pis that hold it
+for host in pi3-1:192.168.0.104 pi3-2:192.168.0.176; do
   name=${host%%:*}; ip=${host##*:}
   mkdir -p "$dest/$name"
   out="$dest/$name/$(date +%Y%m%d-%H%M%S).tar.gz"
@@ -17,6 +38,6 @@ for host in pi4:192.168.0.174 pi3-1:192.168.0.104; do
   else
     echo "backup of $name failed: $(cat "$out.err")" >&2; rm -f "$out.part" "$out.err"; rc=1
   fi
-  ls -1t "$dest/$name"/*.tar.gz 2>/dev/null | tail -n +$((keep + 1)) | xargs -r rm --
+  prune "$dest/$name"
 done
 exit $rc

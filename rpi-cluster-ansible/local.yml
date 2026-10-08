@@ -364,19 +364,12 @@
             state: started
             daemon_reload: "{{ bt_proxy_firewall_unit.changed }}"
 
-    # --- pi4 and pi3-1: state that phone-1 pulls into /var/backups/cluster ---
-    # pi4 holds the K3s datastore and TLS material, pi3-1 the SeaweedFS master
-    # and filer metadata. phone-1's key may run only this export script, which
-    # streams a tar.gz to stdout.
+    # --- pi3-1 and pi3-2: SeaweedFS metadata that phone-1 pulls into /var/backups/cluster ---
+    # pi3-1 holds the master, pi3-2 the filer. phone-1's key may run only this
+    # export script, which streams a tar.gz to stdout.
     - name: Allow phone-1 to pull a backup archive
-      when: ansible_hostname in ['pi4', 'pi3-1']
+      when: ansible_hostname in ['pi3-1', 'pi3-2']
       block:
-        - name: Install sqlite3 (consistent copy of the K3s datastore)
-          ansible.builtin.apt:
-            name: sqlite3
-            state: present
-          when: ansible_hostname == 'pi4'
-
         - name: Install the backup export script
           ansible.builtin.copy:
             dest: /usr/local/sbin/cluster-backup-export
@@ -388,12 +381,6 @@
               set -eu
               tmp=$(mktemp -d -p /var/tmp)
               trap 'rm -rf "$tmp"' EXIT
-              k3s=/var/lib/rancher/k3s/server
-              if [ -f "$k3s/db/state.db" ]; then
-                mkdir -p "$tmp/k3s"
-                sqlite3 "$k3s/db/state.db" ".backup '$tmp/k3s/state.db'"
-                cp -a "$k3s/tls" "$k3s/cred" "$k3s/token" "$tmp/k3s/"
-              fi
               for d in seaweedfs-master seaweedfs-filer; do
                 [ -d "/mnt/longhorn-disk1/$d" ] && cp -a "/mnt/longhorn-disk1/$d" "$tmp/"
               done
@@ -404,6 +391,35 @@
             user: root
             key: "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIKo3F5WEjANQ3gdQXoOKxhvuad5p/UjbiefkpXRDquCV phone-1-cluster-backup"
             key_options: 'command="/usr/local/sbin/cluster-backup-export",restrict'
+
+    # --- pi4: standby copy of the K3s server state, pushed by phone-1 ---
+    - name: Receive the K3s standby archive from phone-1
+      when: ansible_hostname == 'pi4'
+      block:
+        - name: Install the standby receive script
+          ansible.builtin.copy:
+            dest: /usr/local/sbin/cluster-standby-receive
+            mode: "0755"
+            owner: root
+            group: root
+            content: |
+              #!/bin/bash
+              # Reads a tar.gz on stdin into /var/backups/cluster-standby, keeps the newest 14.
+              set -eu
+              umask 077
+              d=/var/backups/cluster-standby
+              mkdir -p "$d"
+              out="$d/phone-1-$(date +%Y%m%d-%H%M%S).tar.gz"
+              cat > "$out.part"
+              tar -tzf "$out.part" > /dev/null
+              mv "$out.part" "$out"
+              ls -1t "$d"/*.tar.gz | tail -n +15 | xargs -r rm --
+
+        - name: Authorize phone-1's push key for the receive script only
+          ansible.posix.authorized_key:
+            user: root
+            key: "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIPbH8JpkeTPOv6kGtFD8Gl2l6j0UadEG6ZyL0P4kfIUD phone-1-standby-push"
+            key_options: 'command="/usr/local/sbin/cluster-standby-receive",restrict'
 
     # --- every Pi: disk health metrics for Prometheus, no iSCSI ---
     # SMART data from the USB SSDs goes to node-exporter's textfile collector
