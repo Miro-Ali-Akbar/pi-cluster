@@ -20,10 +20,9 @@ spec:
   values:
     global:
       seaweedfs:
-        # replicationPlacement 010 = 1 extra copy on another RACK, not just
-        # another node. pi4 is its own rack ("pi4-rack") and the two Pi 3s
-        # share "pi3-rack", so this guarantees every replicated file has one
-        # copy on pi4 - the strongest node, with a real SATA SSD bus.
+        # replicationPlacement 010 = 1 extra copy in another RACK. Every disk is
+        # its own rack, so the two copies of any volume always sit on two
+        # different disks, whichever they are (a disk failure loses nothing).
         enableReplication: true
         replicationPlacement: "010"
 
