@@ -4,8 +4,9 @@
 # and reached from home.miro.zip. Needs hostNetwork + privileged: it
 # manages its own network interfaces (thread0/wpan0) and NATs/routes
 # between the Thread mesh and eth0 (OT_INFRA_IF), which isn't possible
-# from a normal pod network namespace. Pinned to pi3-1, the same node the
-# dongle is physically plugged into and where matter-server runs.
+# from a normal pod network namespace. Pinned to pi4, the node the dongle is
+# physically plugged into (its USB controller copes with the dongle better than
+# a Pi 3's); matter-server on phone-1 reaches it over the LAN.
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -24,7 +25,7 @@ spec:
         app: otbr
     spec:
       nodeSelector:
-        kubernetes.io/hostname: pi3-1 # pinned by hostname, not role - depends on the Thread dongle physically plugged into this specific node
+        kubernetes.io/hostname: pi4 # pinned by hostname, not role - depends on the Thread dongle physically plugged into this specific node
       hostNetwork: true
       dnsPolicy: ClusterFirstWithHostNet
       containers:
@@ -37,8 +38,8 @@ spec:
               value: "spinel+hdlc+uart:///dev/serial/by-id/usb-Nordic_Semiconductor_nRF528xx_OpenThread_Device_FBE385FD611D-if00"
             - name: OT_INFRA_IF
               value: eth0
-            # Default is 127.0.0.1, which with hostNetwork means "pi3-1's
-            # own loopback only" - Home Assistant (on pi4) needs to reach
+            # Default is 127.0.0.1, which with hostNetwork means "pi4's
+            # own loopback only" - Home Assistant (on phone-1) needs to reach
             # these over the LAN to push/read the Thread dataset.
             - name: OT_REST_LISTEN_ADDR
               value: "0.0.0.0"

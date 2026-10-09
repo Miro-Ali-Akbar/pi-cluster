@@ -1,7 +1,7 @@
 # matterjs-server exposes the WebSocket API Home Assistant's Matter
 # integration uses, on 192.168.0.179:5580. Runs on phone-1 with hostNetwork
 # for mDNS discovery. The Thread devices are reached over IPv6 through the
-# OTBR border router on pi3-1 (phone-1 learns the Thread prefix route from the
+# OTBR border router on pi4 (phone-1 learns the Thread prefix route from the
 # router advertisements). BLE commissioning goes through the phone's own
 # Bluetooth: NOBLE_BINDINGS=dbus talks to the host's bluetoothd over
 # /run/dbus, unprivileged, no direct HCI socket access needed. Fabric data
