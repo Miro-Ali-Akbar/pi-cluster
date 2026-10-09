@@ -21,7 +21,7 @@ The Flux controllers run on `phone-1` (`clusters/my-cluster/flux-system/on-phone
 
 ## Storage
 
-SeaweedFS with one StorageClass, `seaweedfs-storage`: volume servers pinned per disk (3 on `pi4`, 1 each on `pi3-1` and `pi3-2`), 2x rack-diverse replication, master on `pi3-1`, filer on `pi3-2` (metadata in `/mnt/longhorn-disk1/seaweedfs-filer`). The CSI driver runs on `pi4`, `pi3-2` and `phone-1`. A volume server refuses to start without `.real-disk-marker` at the root of its disk (`sudo touch /mnt/<disk>/.real-disk-marker`).
+SeaweedFS with one StorageClass, `seaweedfs-storage`: volume servers pinned per disk (2 on `pi4`, 1 each on `pi3-1` and `pi3-2`), 2x rack-diverse replication, master on `pi3-1`, filer on `pi3-2` (metadata in `/mnt/longhorn-disk1/seaweedfs-filer`). The CSI driver runs on `pi4`, `pi3-2` and `phone-1`. A volume server refuses to start without `.real-disk-marker` at the root of its disk (`sudo touch /mnt/<disk>/.real-disk-marker`).
 
 ## Disaster recovery
 
