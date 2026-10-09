@@ -7,7 +7,7 @@ K3s on three Raspberry Pis and one phone: home automation and Zigbee/Matter/Thre
 | `pi4` 192.168.0.174 | Pi 4, 220 GB USB SSD | 2 GB | K3s agent (old server data kept as the standby), SeaweedFS volumes and S3, NAS (Samba), bt-proxy; host: WireGuard, DuckDNS updater |
 | `pi3-1` 192.168.0.104 | Pi 3, SD | 1 GB | SeaweedFS master and a volume, OTBR, Zigbee bridge (dongles here) |
 | `pi3-2` 192.168.0.176 | Pi 3+, SD | 1 GB | edge proxy (80/443 forwarded here), site-counters, SeaweedFS filer and a volume |
-| `phone-1` 192.168.0.179 | OnePlus 7 Pro, Wi-Fi, 224 GB | 8 GB | K3s server, Home Assistant, Matter server, Flux, Prometheus, Alertmanager, web server, CoreDNS replica |
+| `phone-1` 192.168.0.179 | OnePlus 7 Pro, Wi-Fi, 224 GB | 8 GB | K3s server, Home Assistant, Matter server, MQTT broker (Mosquitto, port 1883), Flux, Prometheus, Alertmanager, web server, CoreDNS replica |
 
 The Pis are memory-tight; put new workloads on `phone-1` (tainted `node-type=phone:NoSchedule`).
 
@@ -32,4 +32,4 @@ secrets/               age private key (gitignored, workstation only)
 
 Cluster Secrets are SOPS/age-encrypted `*.sops.yaml` in git; Flux decrypts with the `sops-age` Secret. The age key is in `secrets/age.key`, the password manager and the cluster. Rotate: `sops <file>`, commit, restart pods that read it.
 
-Not in git: `flux-system` deploy key (`flux bootstrap`), `/etc/rpi-cluster/id_ed25519` on each Pi, phone Wi-Fi profile and SSH keys.
+MQTT users `homeassistant` and `pc` (passwords in `secrets/mqtt-credentials.txt`, hashed in `apps/mqtt/passwd.sops.yaml`). Not in git: `flux-system` deploy key (`flux bootstrap`), `/etc/rpi-cluster/id_ed25519` on each Pi, phone Wi-Fi profile and SSH keys.
