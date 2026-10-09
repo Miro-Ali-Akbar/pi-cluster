@@ -95,6 +95,32 @@ data:
             for: 15m
             annotations:
               summary: "{{ $labels.node }} {{ $labels.device }} is at {{ $value }} C"
+          - alert: UnitFailed
+            expr: unit_failed == 1
+            for: 15m
+            annotations:
+              summary: "{{ $labels.node }}: {{ $labels.unit }} is in a failed state (check journalctl -u {{ $labels.unit }})"
+          - alert: BackupStale
+            expr: >
+              time() - unit_last_exit_timestamp_seconds{unit="cluster-backup.service"} > 13 * 3600
+              and unit_last_exit_timestamp_seconds{unit="cluster-backup.service"} > 0
+            annotations:
+              summary: "No cluster backup has run for over 13 hours (it should run every 6)"
+          - alert: UnitHealthMissing
+            expr: absent(unit_last_exit_timestamp_seconds{unit="cluster-backup.service"})
+            for: 1h
+            annotations:
+              summary: "No unit-health metrics from phone-1: the backup and phone timers are not being watched"
+          - alert: CertExpiringSoon
+            expr: cert_expiry_seconds < 14 * 86400
+            for: 1h
+            annotations:
+              summary: "TLS certificate for {{ $labels.target }} expires in {{ $value | humanizeDuration }} (renewal is failing)"
+          - alert: CertProbeFailed
+            expr: cert_probe_ok == 0
+            for: 1h
+            annotations:
+              summary: "Could not read the TLS certificate served for {{ $labels.target }}"
           - alert: NodeNotReady
             expr: kube_node_status_condition{condition="Ready",status="true"} == 0
             for: 3m

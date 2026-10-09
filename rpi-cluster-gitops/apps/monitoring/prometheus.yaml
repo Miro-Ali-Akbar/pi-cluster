@@ -16,7 +16,7 @@ spec:
       labels:
         app: prometheus
       annotations:
-        config-revision: "5"
+        config-revision: "6"
     spec:
       serviceAccountName: prometheus
       nodeSelector:

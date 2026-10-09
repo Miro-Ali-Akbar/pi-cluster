@@ -1,0 +1,25 @@
+#!/bin/bash
+# Expiry of the TLS certificates the public endpoints actually serve, for node-exporter's
+# textfile collector (/var/lib/node_exporter/certs.prom). Lines: name host port sni.
+set -u
+dir=/var/lib/node_exporter
+mkdir -p "$dir"
+tmp=$(mktemp -p "$dir" .certs.XXXXXX)
+{
+  while read -r name host port sni; do
+    end=$(echo | timeout 10 openssl s_client -connect "$host:$port" -servername "$sni" 2>/dev/null | openssl x509 -noout -enddate 2>/dev/null | cut -d= -f2)
+    if [ -n "$end" ] && epoch=$(date -d "$end" +%s 2>/dev/null); then
+      echo "cert_probe_ok{target=\"$name\"} 1"
+      echo "cert_expiry_seconds{target=\"$name\"} $((epoch - $(date +%s)))"
+    else
+      echo "cert_probe_ok{target=\"$name\"} 0"
+    fi
+  done <<'T'
+miro.zip 192.168.0.176 443 miro.zip
+file.miro.zip 192.168.0.176 443 file.miro.zip
+home.miro.zip 192.168.0.176 443 home.miro.zip
+home-assistant 127.0.0.1 8123 home.miro.zip
+T
+} > "$tmp"
+chmod 644 "$tmp"
+mv "$tmp" "$dir/certs.prom"

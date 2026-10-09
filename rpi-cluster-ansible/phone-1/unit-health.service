@@ -1,0 +1,6 @@
+[Unit]
+Description=Write systemd unit health for node-exporter
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/sbin/unit-health cluster-backup.service phone-metrics.service battery-limiter.service power-screen.service k3s.service

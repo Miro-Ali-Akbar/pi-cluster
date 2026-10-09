@@ -1,0 +1,9 @@
+[Unit]
+Description=Certificate expiry check hourly
+
+[Timer]
+OnBootSec=3min
+OnUnitActiveSec=1h
+
+[Install]
+WantedBy=timers.target

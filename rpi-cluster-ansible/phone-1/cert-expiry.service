@@ -1,0 +1,6 @@
+[Unit]
+Description=Write TLS certificate expiry for node-exporter
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/sbin/cert-expiry

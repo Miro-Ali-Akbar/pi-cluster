@@ -1,0 +1,20 @@
+#!/bin/bash
+# Failed state and last exit time of the systemd units given as arguments, for node-exporter's
+# textfile collector (/var/lib/node_exporter/units.prom).
+set -u
+dir=/var/lib/node_exporter
+mkdir -p "$dir"
+tmp=$(mktemp -p "$dir" .units.XXXXXX)
+{
+  for u in "$@"; do
+    failed=0
+    [ "$(systemctl is-failed "$u" 2>/dev/null)" = failed ] && failed=1
+    ts=$(systemctl show "$u" -p ExecMainExitTimestamp --value 2>/dev/null)
+    epoch=0
+    [ -n "$ts" ] && epoch=$(date -d "$ts" +%s 2>/dev/null || echo 0)
+    echo "unit_failed{unit=\"$u\"} $failed"
+    echo "unit_last_exit_timestamp_seconds{unit=\"$u\"} $epoch"
+  done
+} > "$tmp"
+chmod 644 "$tmp"
+mv "$tmp" "$dir/units.prom"
