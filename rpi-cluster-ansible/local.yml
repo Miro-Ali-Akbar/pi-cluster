@@ -567,3 +567,15 @@
             enabled: true
             state: started
             daemon_reload: "{{ unit_health_units.changed }}"
+
+    # --- pi4: IPv6 forwarding for the OpenThread border router ---
+    # OTBR routes between the LAN (eth0) and the Thread mesh (wpan0). Without forwarding, hosts on the
+    # LAN (matter-server on phone-1) cannot reach Thread devices through it.
+    - name: Enable IPv6 forwarding for OTBR
+      when: ansible_hostname == 'pi4'
+      ansible.posix.sysctl:
+        name: net.ipv6.conf.all.forwarding
+        value: "1"
+        sysctl_file: /etc/sysctl.d/90-otbr-forwarding.conf
+        state: present
+        reload: true
