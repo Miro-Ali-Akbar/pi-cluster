@@ -1,0 +1,126 @@
+# Mosquitto MQTT broker for Home Assistant and LAN clients (for example the
+# PC integration from HACS). Runs on phone-1 next to Home Assistant; reachable
+# on 192.168.0.179:1883 (hostPort) from the LAN and the VPN. Password auth only,
+# two users (homeassistant, pc) in the SOPS-encrypted mosquitto-passwd Secret.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: mosquitto-config
+  namespace: mqtt
+data:
+  mosquitto.conf: |
+    listener 1883
+    allow_anonymous false
+    password_file /run/mosquitto/passwd
+    persistence true
+    persistence_location /mosquitto/data/
+    log_dest stdout
+    log_type error
+    log_type warning
+    log_type notice
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: mosquitto
+  namespace: mqtt
+spec:
+  replicas: 1
+  strategy:
+    type: Recreate # hostPort 1883 can only be bound by one pod
+  selector:
+    matchLabels:
+      app: mosquitto
+  template:
+    metadata:
+      labels:
+        app: mosquitto
+      annotations:
+        config-revision: "1"
+    spec:
+      nodeSelector:
+        kubernetes.io/hostname: phone-1
+      tolerations:
+        - key: node-type
+          operator: Equal
+          value: phone
+          effect: NoSchedule
+      automountServiceAccountToken: false
+      enableServiceLinks: false
+      initContainers:
+        # Mosquitto wants its password file owned by the user it runs as, mode 600.
+        - name: prepare
+          image: busybox:1.37
+          command:
+            - sh
+            - -c
+            - |
+              cp /secret/passwd /run/mosquitto/passwd
+              chown 1883:1883 /run/mosquitto/passwd /mosquitto/data
+              chmod 600 /run/mosquitto/passwd
+          securityContext:
+            runAsUser: 0
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop: [ALL]
+              add: [CHOWN, DAC_OVERRIDE, FOWNER]
+          volumeMounts:
+            - name: secret
+              mountPath: /secret
+              readOnly: true
+            - name: run
+              mountPath: /run/mosquitto
+            - name: data
+              mountPath: /mosquitto/data
+      containers:
+        - name: mosquitto
+          image: eclipse-mosquitto:2
+          args: ["mosquitto", "-c", "/mosquitto/config/mosquitto.conf"]
+          ports:
+            - containerPort: 1883
+              hostPort: 1883
+          readinessProbe:
+            tcpSocket:
+              port: 1883
+          livenessProbe:
+            tcpSocket:
+              port: 1883
+            initialDelaySeconds: 15
+            periodSeconds: 30
+          resources:
+            requests:
+              cpu: 10m
+              memory: 16Mi
+            limits:
+              memory: 64Mi
+          securityContext:
+            runAsUser: 1883
+            runAsGroup: 1883
+            runAsNonRoot: true
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: [ALL]
+          volumeMounts:
+            - name: config
+              mountPath: /mosquitto/config
+              readOnly: true
+            - name: run
+              mountPath: /run/mosquitto
+              readOnly: true
+            - name: data
+              mountPath: /mosquitto/data
+      volumes:
+        - name: config
+          configMap:
+            name: mosquitto-config
+        - name: secret
+          secret:
+            secretName: mosquitto-passwd
+        - name: run
+          emptyDir:
+            medium: Memory
+        - name: data
+          hostPath:
+            path: /var/lib/mosquitto
+            type: DirectoryOrCreate

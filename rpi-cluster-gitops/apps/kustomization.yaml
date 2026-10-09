@@ -11,3 +11,4 @@ resources:
   - zigbee-bridge
   - bt-proxy
   - monitoring
+  - mqtt

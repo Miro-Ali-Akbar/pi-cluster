@@ -1,0 +1,23 @@
+apiVersion: v1
+kind: Secret
+metadata:
+    name: mosquitto-passwd
+    namespace: mqtt
+type: Opaque
+stringData:
+    passwd: ENC[AES256_GCM,data:/VsoywIkHWtiA+mjoH2pTG5E6TK2sP0OMwj4RJXbZiQoGpLzLwWzqfpMpN2V6W00b9uOKcYeJC0W7Nce7TrQ0KEVDbFud6mo8SKLhs7N7J7Ehnld+vrIAUL0NSnWWjRz00zNXfSAS/VI6dUnQkurrCQRn1prOBjl3o/hEkntxuJ6Y/loHtBByCKKZVBYUVyOBltnRsMlLLH+AEmAX63UsFQ07w7WYjjc8noZ1ZBdVGf3Stqem/FoxCxasp+fmBUQcpwX2ImTHyMwb08QrmQPkM9rTRf0tqBZuSp6CE1FMrGa/uJvLBN5D7j89fn9dKvhOTo+Y7V8PPFBpyMeoVSBkUfn97R8mURRlWbmM5HRLsc1lpKT4wWyqtwIJx8sZ083n6ud8kHCS2w9LFrgOu+5a7wAvzvUkEUlplU+4bcr+2u8BmwhLTCCdnhVioyP26DVxeuinTQYtuC9dDfTFP8BlEgMKqgWd2uXpXJE/mITxdyN30Hq6xFeOVnR7ygcZFYBDmYjfes=,iv:X287ZoQl7tBs358ATigoUf4RUYr0CbsD6JPKiCDltnc=,tag:M9SSGnbshwk30E/L1aR2dw==,type:str]
+sops:
+    age:
+        - enc: |
+            -----BEGIN AGE ENCRYPTED FILE-----
+            YWdlLWVuY3J5cHRpb24ub3JnL3YxCi0+IFgyNTUxOSA1Qy85U3JRWGI5TEU0V0R2
+            R3I0SnNuRzFydi91NmNiWmg5WHJNRk9pWEE4CkxVSFpGdVR5REMrQzhRSXl2ZTB2
+            WFhKL1VnRWlrREtybC9sM3gyUXlYWmMKLS0tIEZkZkQ3bndXaEN5QUFISzlwVkVj
+            VDhMUFlpK0V3djBHcUlDMGdkTnpJRUUK5VuYLW9dm0eQl85lTR+6dLKoKdzHPBpx
+            g0UTQJRzQCS9Qt/1fFUgpoKAr++BQ1yFrB+sSwjdJMZbU61eCXpbxw==
+            -----END AGE ENCRYPTED FILE-----
+          recipient: age1742pp7memrxpg9w9zm5m5aups35pkh9tqduzex802kawsec74aqq8xz3eu
+    encrypted_regex: ^(data|stringData)$
+    lastmodified: "2026-10-09T09:04:04Z"
+    mac: ENC[AES256_GCM,data:K95nsa0GoT3UgVVGAGM170tMBELON3klmDND9wwkxBvpLvHlZQF35kQQ68151k+4hO9XKNfi3jzIIZJk2U7qR41Jg4iw6Q3jnk1JLnBYyPt3PqaTs9TbmUR8OO9h8VeEC0PUgsvfz3IPq2Yq7YMH4/qti5bOYjqahgdFSbcY3K0=,iv:oht6uOR6cQCC0ORSX1Caz9PIoZAaJXbWvE6tLytBZZs=,tag:HFkueHDJP6zQKnqYwpDMyQ==,type:str]
+    version: 3.13.3
