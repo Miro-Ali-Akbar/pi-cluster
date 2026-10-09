@@ -125,7 +125,7 @@ spec:
             memory: 160Mi
       pi3-2-disk1:
         replicas: 1
-        rack: pi3-rack
+        rack: pi3-2-disk1
         nodeSelector: |
           kubernetes.io/hostname: pi3-2
         initContainers: |
