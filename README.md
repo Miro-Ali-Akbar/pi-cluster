@@ -30,6 +30,6 @@ secrets/               age private key (gitignored, workstation only)
 
 ## Secrets
 
-Cluster Secrets are SOPS/age-encrypted `*.sops.yaml` in git; Flux decrypts with the `sops-age` Secret. The age key is in `secrets/age.key`, the password manager and the cluster. Rotate: `sops <file>`, commit, restart pods that read it.
+Cluster Secrets are SOPS/age-encrypted `*.sops.yaml` in git; Flux decrypts with the `sops-age` Secret. The age key is in `secrets/age.key`, the password manager and the cluster. Rotate: `sops <file>`, commit, restart pods that read it. Read a login: `SOPS_AGE_KEY_FILE=secrets/age.key sops -d secrets-encrypted/<file>.sops.yaml`.
 
-MQTT users `homeassistant` and `pc` (passwords in `secrets/mqtt-credentials.txt`, hashed in `apps/mqtt/passwd.sops.yaml`). Not in git: `flux-system` deploy key (`flux bootstrap`), `/etc/rpi-cluster/id_ed25519` on each Pi, phone Wi-Fi profile and SSH keys.
+MQTT users `homeassistant` and `pc` (passwords in `secrets-encrypted/mqtt-credentials.sops.yaml`, hashed in `rpi-cluster-gitops/apps/mqtt/passwd.sops.yaml`). Not in git: `flux-system` deploy key (`flux bootstrap`), `/etc/rpi-cluster/id_ed25519` on each Pi, phone Wi-Fi profile and SSH keys.
