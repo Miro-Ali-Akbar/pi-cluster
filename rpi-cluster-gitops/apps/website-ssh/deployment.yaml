@@ -1,0 +1,74 @@
+# ssh miro.zip: a terminal version of the website (source: github.com/Miro-Ali-Akbar/website-ssh).
+# Same node as edge-proxy, so the router forwards every miro.zip port to one machine:
+# external 22 -> pi3-2:2222. The node's own sshd stays on 22 and is never exposed to the internet.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: website-ssh
+  namespace: website-ssh
+spec:
+  replicas: 1
+  strategy:
+    type: Recreate # hostPort 2222 can only be bound by one pod
+  selector:
+    matchLabels:
+      app: website-ssh
+  template:
+    metadata:
+      labels:
+        app: website-ssh
+    spec:
+      nodeSelector:
+        kubernetes.io/hostname: pi3-2
+      automountServiceAccountToken: false
+      enableServiceLinks: false
+      securityContext:
+        runAsNonRoot: true
+        fsGroup: 65532 # distroless "nonroot": lets it read the host key Secret
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: website-ssh
+          image: ghcr.io/miro-ali-akbar/website-ssh:latest
+          env:
+            # In-cluster, so content refreshes do not hairpin through the router.
+            - name: SITE_URL
+              value: http://web-server.web-server.svc.cluster.local
+            # Same counters as the website: SSH visits count too.
+            - name: COUNTERS_URL
+              value: http://site-counters.site-counters.svc.cluster.local:8080/api
+            - name: HOST_KEY_PATH
+              value: /hostkey/id_ed25519
+          ports:
+            - containerPort: 2222
+              hostPort: 2222
+          readinessProbe:
+            tcpSocket:
+              port: 2222
+          livenessProbe:
+            tcpSocket:
+              port: 2222
+            initialDelaySeconds: 20
+            periodSeconds: 30
+          resources:
+            requests:
+              cpu: 25m
+              memory: 16Mi
+            limits:
+              memory: 64Mi
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: [ALL]
+          volumeMounts:
+            - name: hostkey
+              mountPath: /hostkey
+              readOnly: true
+      volumes:
+        # Fixed host key (SOPS-encrypted in hostkey.sops.yaml) so returning
+        # visitors do not get a "host key changed" warning after a redeploy.
+        - name: hostkey
+          secret:
+            secretName: website-ssh-hostkey
+            defaultMode: 0440

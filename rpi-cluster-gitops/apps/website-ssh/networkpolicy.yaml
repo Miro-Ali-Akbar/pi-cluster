@@ -1,0 +1,43 @@
+# The app only reads the website and the counters, so allow nothing else out.
+# Ingress is open: it is a public service (hostPort 2222 on pi3-2).
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: website-ssh
+  namespace: website-ssh
+spec:
+  podSelector:
+    matchLabels:
+      app: website-ssh
+  policyTypes: [Ingress, Egress]
+  ingress:
+    - ports:
+        - port: 2222
+  egress:
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: kube-system
+      ports:
+        - port: 53
+          protocol: UDP
+        - port: 53
+          protocol: TCP
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: web-server
+          podSelector:
+            matchLabels:
+              app: web-server
+      ports:
+        - port: 80
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: site-counters
+          podSelector:
+            matchLabels:
+              app: site-counters
+      ports:
+        - port: 8080
