@@ -4,8 +4,8 @@ K3s on three Raspberry Pis and one phone: home automation and Zigbee/Matter/Thre
 
 | Node | Hardware | RAM | Runs |
 | --- | --- | --- | --- |
-| `pi4` 192.168.0.174 | Pi 4, 220 GB USB SSD | 2 GB | K3s agent (old server data kept as the standby), SeaweedFS volumes and S3, NAS (Samba), bt-proxy; host: WireGuard, DuckDNS updater |
-| `pi3-1` 192.168.0.104 | Pi 3, SD | 1 GB | SeaweedFS master and a volume, OTBR, Zigbee bridge (dongles here) |
+| `pi4` 192.168.0.174 | Pi 4, 220 GB USB SSD | 2 GB | K3s agent (old server data kept as the standby), SeaweedFS volumes and S3, NAS (Samba), bt-proxy, OTBR (Thread dongle); host: WireGuard, DuckDNS updater |
+| `pi3-1` 192.168.0.104 | Pi 3, SD | 1 GB | SeaweedFS master and a volume, Zigbee bridge (Zigbee dongle here) |
 | `pi3-2` 192.168.0.176 | Pi 3+, SD | 1 GB | edge proxy (80/443 forwarded here), site-counters, SeaweedFS filer and a volume |
 | `phone-1` 192.168.0.179 | OnePlus 7 Pro, Wi-Fi, 224 GB | 8 GB | K3s server, Home Assistant, Matter server, MQTT broker (Mosquitto, port 1883), Flux, Prometheus, Alertmanager, web server, CoreDNS replica |
 

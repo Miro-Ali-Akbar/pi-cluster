@@ -14,9 +14,9 @@ The Flux controllers run on `phone-1` (`clusters/my-cluster/flux-system/on-phone
 
 ## Scheduling
 
-- Hardware-tied apps select `kubernetes.io/hostname: <node>` (`otbr`, `zigbee-bridge` on `pi3-1`; `bt-proxy` on `pi4`).
+- Hardware-tied apps select `kubernetes.io/hostname: <node>` (`zigbee-bridge` on `pi3-1`; `otbr`, `bt-proxy` on `pi4`).
 - `phone-1` is tainted `node-type=phone:NoSchedule`. Apps there select it and tolerate the taint: Home Assistant, matter-server, Flux, monitoring, web-server, coredns-phone, the certbot and backup jobs.
-- Home Assistant uses hostPaths on `phone-1` (`/var/lib/home-assistant/config`, `/etc/letsencrypt`), runs with `hostNetwork`, and reaches Zigbee (ser2net on `pi3-1`, port 6638), Matter (matter-server on `phone-1`, port 5580; it reaches the Thread devices through OTBR on `pi3-1`, and has no Bluetooth, so new devices cannot be commissioned over BLE from it) and Bluetooth (bt-proxy on `pi4`, port 6053) over the network.
+- Home Assistant uses hostPaths on `phone-1` (`/var/lib/home-assistant/config`, `/etc/letsencrypt`), runs with `hostNetwork`, and reaches Zigbee (ser2net on `pi3-1`, port 6638), Matter (matter-server on `phone-1`, port 5580; it reaches the Thread devices through OTBR on `pi4`, and has no Bluetooth, so new devices cannot be commissioned over BLE from it) and Bluetooth (bt-proxy on `pi4`, port 6053) over the network.
 - `bt-proxy`'s API is unauthenticated: `pi4` drops port 6053 from all but `phone-1` (`bt-proxy-firewall.service`, from `local.yml`).
 
 ## Storage
