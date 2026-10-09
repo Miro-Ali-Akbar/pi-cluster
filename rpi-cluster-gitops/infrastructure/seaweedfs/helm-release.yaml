@@ -102,7 +102,7 @@ spec:
     volumes:
       pi3-1-disk1:
         replicas: 1
-        rack: pi3-rack
+        rack: pi3-1-disk1
         nodeSelector: |
           kubernetes.io/hostname: pi3-1
         initContainers: |
