@@ -20,7 +20,7 @@ mkdir -p "$tmp/k3s"
 if sqlite3 "$k3s/db/state.db" ".backup '$tmp/k3s/state.db'" && cp -a "$k3s/tls" "$k3s/cred" "$k3s/token" "$tmp/k3s/" && tar -C "$tmp" -czf "$out.part" . && tar -tzf "$out.part" > /dev/null; then
   mv "$out.part" "$out"
   if [ -f "$push_key" ]; then
-    ssh -i "$push_key" -o BatchMode=yes -o IdentitiesOnly=yes -o StrictHostKeyChecking=accept-new -o ConnectTimeout=20 master@192.168.0.174 < "$out" || { echo "standby push to pi4 failed" >&2; rc=1; }
+    ssh -i "$push_key" -o BatchMode=yes -o IdentitiesOnly=yes -o StrictHostKeyChecking=accept-new -o ConnectTimeout=20 root@192.168.0.174 < "$out" || { echo "standby push to pi4 failed" >&2; rc=1; }
   fi
 else
   echo "backup of the K3s datastore failed" >&2; rm -f "$out.part"; rc=1
