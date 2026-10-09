@@ -1,0 +1,6 @@
+[Unit]
+Description=Write phone battery metrics for node-exporter
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/sbin/phone-metrics

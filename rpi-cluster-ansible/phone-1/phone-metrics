@@ -1,0 +1,19 @@
+#!/bin/bash
+# Battery and charger readings for node-exporter's textfile collector (the DaemonSet mounts /var/lib/node_exporter).
+set -u
+b=/sys/class/power_supply/qcom-battery
+c=/sys/class/power_supply/pm8150b-charger
+dir=/var/lib/node_exporter
+mkdir -p "$dir"
+tmp=$(mktemp -p "$dir" .phone.XXXXXX)
+rd() { cat "$1" 2>/dev/null || echo 0; }
+status=$(rd $b/status)
+{
+  echo "phone_battery_voltage_volts $(awk -v v="$(rd $b/voltage_now)" 'BEGIN{printf "%.3f", v/1000000}')"
+  echo "phone_battery_current_amps $(awk -v v="$(rd $b/current_now)" 'BEGIN{printf "%.3f", v/1000000}')"
+  echo "phone_battery_status{status=\"$status\"} 1"
+  echo "phone_charger_enabled $([ "$(rd $c/status)" = Charging ] && echo 1 || echo 0)"
+  echo "phone_charger_input_limit_amps $(awk -v v="$(rd $c/current_max)" 'BEGIN{printf "%.3f", v/1000000}')"
+} > "$tmp"
+chmod 644 "$tmp"
+mv "$tmp" "$dir/phone.prom"

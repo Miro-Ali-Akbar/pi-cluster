@@ -35,10 +35,10 @@ install -m 644 10-power-key.conf /etc/systemd/logind.conf.d/
 systemctl kill -s HUP systemd-logind
 
 # Battery limiter, OLED off, power button screen toggle, Wi-Fi soak logger
-install -m 755 battery-limiter screen-off power-screen wifi-soak cluster-backup /usr/local/sbin/
-install -m 644 battery-limiter.service screen-off.service power-screen.service wifi-soak.service cluster-backup.service cluster-backup.timer /etc/systemd/system/
+install -m 755 battery-limiter screen-off power-screen wifi-soak cluster-backup phone-metrics /usr/local/sbin/
+install -m 644 battery-limiter.service screen-off.service power-screen.service wifi-soak.service cluster-backup.service cluster-backup.timer phone-metrics.service phone-metrics.timer /etc/systemd/system/
 systemctl daemon-reload
-systemctl enable --now battery-limiter screen-off power-screen wifi-soak cluster-backup.timer
+systemctl enable --now battery-limiter screen-off power-screen wifi-soak cluster-backup.timer phone-metrics.timer
 
 # K3s server (the cluster's control plane). For a rebuild, restore the datastore first:
 # extract the newest /var/backups/cluster/pi4-or-phone archive's k3s/{state.db,tls,cred,token} into
