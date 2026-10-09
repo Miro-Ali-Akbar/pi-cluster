@@ -40,7 +40,7 @@ Alternative to step 2: restore the K3s datastore from `/var/backups/cluster/phon
   printf '[Slice]\nIOReadBandwidthMax=/dev/sda 20M\nIOWriteBandwidthMax=/dev/sda 20M\n' | sudo tee /etc/systemd/system/kubepods.slice.d/90-io-throttle.conf
   sudo systemctl daemon-reload
   ```
-- **pi4: K3s datastore and containerd** are bind-mounted from the SSD (`/mnt/longhorn-disk1/k3s-server-db` onto `/var/lib/rancher/k3s/server/db`, `/mnt/longhorn-disk1/k3s-agent-containerd` onto `/var/lib/rancher/k3s/agent/containerd`) through `/etc/fstab`. The pre-move copies are `db.bak-sdcard` and `containerd.bak-sdcard`.
+- **pi4: K3s standby datastore and containerd** are bind-mounted from the SSD (`/mnt/longhorn-disk1/k3s-server-db` onto `/var/lib/rancher/k3s/server/db`, `/mnt/longhorn-disk1/k3s-agent-containerd` onto `/var/lib/rancher/k3s/agent/containerd`) through `/etc/fstab`.
 - **pi4: WireGuard** (`wg0`, 10.200.0.1/29, UDP 51820 forwarded by the router) is the only remote path into the cluster, and masquerades the VPN subnet onto the LAN. A peer whose allowed IPs include `192.168.0.0/24` reaches every node: the workstation's NetworkManager connection `nas` (10.200.0.2, keepalive 25, metric 700) does. The server config is SOPS-encrypted in `rpi-cluster-ansible/wireguard/pi4-wg0.sops.yaml`. Restore:
   ```
   SOPS_AGE_KEY_FILE=secrets/age.key sops --decrypt --input-type yaml --output-type binary rpi-cluster-ansible/wireguard/pi4-wg0.sops.yaml | ssh master@192.168.0.174 'sudo install -m 600 /dev/stdin /etc/wireguard/wg0.conf && sudo systemctl enable --now wg-quick@wg0'
