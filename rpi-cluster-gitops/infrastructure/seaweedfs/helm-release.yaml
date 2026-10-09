@@ -1,7 +1,7 @@
 # Master + filer are pinned to pi3-1 rather than pi4: pi4 already carries
 # the k3s control-plane and Home Assistant, so it has less real headroom
 # than its total RAM suggests. Volume servers run once per physical disk -
-# pi4 hosts two SSDs, since data has to live where the disk physically is.
+# pi4 hosts three SSDs, since data has to live where the disk physically is.
 apiVersion: helm.toolkit.fluxcd.io/v2
 kind: HelmRelease
 metadata:
@@ -184,6 +184,29 @@ spec:
           - name: data1
             type: hostPath
             hostPathPrefix: /mnt/longhorn-disk2
+            maxVolumes: 0
+        resources:
+          requests:
+            cpu: 50m
+            memory: 64Mi
+          limits:
+            memory: 160Mi
+      pi4-wd:
+        replicas: 1
+        rack: pi4-wd
+        nodeSelector: |
+          kubernetes.io/hostname: pi4
+        initContainers: |
+          - name: verify-real-disk
+            image: busybox
+            command: ["sh", "-c", "test -f /data1/.real-disk-marker || (echo 'FATAL: /data1 has no .real-disk-marker - the physical disk is likely disconnected and this would silently fall back to writing on the SD card. Refusing to start.' >&2 && exit 1)"]
+            volumeMounts:
+              - name: data1
+                mountPath: /data1
+        dataDirs:
+          - name: data1
+            type: hostPath
+            hostPathPrefix: /mnt/fast-storage
             maxVolumes: 0
         resources:
           requests:
