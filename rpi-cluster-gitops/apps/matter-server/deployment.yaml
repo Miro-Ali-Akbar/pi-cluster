@@ -41,6 +41,11 @@ spec:
               value: "dbus"
             - name: BLUETOOTH_ADAPTER
               value: "0"
+            # BLE goes through Home Assistant's Bluetooth proxies (bt-proxy on pi4)
+            # instead of the phone's own adapter, which cannot finish connecting to
+            # some IKEA devices while scanning (le-connection-abort-by-local).
+            - name: BLE_PROXY
+              value: "true"
             - name: LOG_LEVEL
               value: debug
           securityContext:
