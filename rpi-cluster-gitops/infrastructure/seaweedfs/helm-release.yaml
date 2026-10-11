@@ -45,15 +45,19 @@ spec:
 
     filer:
       replicas: 1
-      # Prefer pi4's rack when there's a choice of which replica to read
-      # from or write to first - fastest node, least contention.
-      dataCenter: ""
-      rack: pi4-rack
+      # Runs on phone-1: the Pis ran out of memory and the OOM killer took the
+      # filer down, which left the NAS mounts dead. Metadata (about 20 MB) is a
+      # hostPath on the phone; the volume data stays on the SSDs.
       nodeSelector: |
-        kubernetes.io/hostname: pi3-2
+        kubernetes.io/hostname: phone-1
+      tolerations: |
+        - key: node-type
+          operator: Equal
+          value: phone
+          effect: NoSchedule
       data:
         type: hostPath
-        hostPathPrefix: /mnt/longhorn-disk1/seaweedfs-filer
+        hostPathPrefix: /var/lib/seaweedfs-filer
       resources:
         requests:
           cpu: 50m
