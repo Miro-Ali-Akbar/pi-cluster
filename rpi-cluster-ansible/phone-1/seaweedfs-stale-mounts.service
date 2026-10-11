@@ -1,0 +1,6 @@
+[Unit]
+Description=Unmount dead SeaweedFS FUSE mounts
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/sbin/seaweedfs-stale-mounts

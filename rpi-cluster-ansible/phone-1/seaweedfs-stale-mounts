@@ -1,0 +1,15 @@
+#!/bin/bash
+# Lazy-unmounts SeaweedFS FUSE mounts whose process is gone ("Transport endpoint is not connected").
+# After a filer restart those mounts stay dead and the CSI driver refuses to clean them up, so a pod
+# that needs the volume sits in Init:CreateContainerError. With the dead mount gone, kubelet and the CSI
+# driver stage the volume again on their next retry.
+set -u
+findmnt -rn -o TARGET,FSTYPE | while read -r target fstype; do
+  [ "$fstype" = fuse.seaweedfs ] || continue
+  out=$(timeout 5 stat "$target" 2>&1 >/dev/null) && continue
+  case "$out" in
+    *"Transport endpoint is not connected"*)
+      logger -t seaweedfs-stale-mounts "lazy-unmounting dead mount $target"
+      umount -l "$target" ;;
+  esac
+done

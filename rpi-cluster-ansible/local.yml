@@ -579,3 +579,63 @@
         sysctl_file: /etc/sysctl.d/90-otbr-forwarding.conf
         state: present
         reload: true
+
+    # --- every Pi: clear dead SeaweedFS FUSE mounts so pods can mount their volumes again ---
+    - name: Stale SeaweedFS mount cleanup
+      block:
+        - name: Install the stale mount cleanup script
+          ansible.builtin.copy:
+            dest: /usr/local/sbin/seaweedfs-stale-mounts
+            mode: "0755"
+            owner: root
+            group: root
+            content: |
+              #!/bin/bash
+              # Lazy-unmounts SeaweedFS FUSE mounts whose process is gone ("Transport endpoint is not connected").
+              # After a filer restart those mounts stay dead and the CSI driver refuses to clean them up, so a pod
+              # that needs the volume sits in Init:CreateContainerError. With the dead mount gone, kubelet and the CSI
+              # driver stage the volume again on their next retry.
+              set -u
+              findmnt -rn -o TARGET,FSTYPE | while read -r target fstype; do
+                [ "$fstype" = fuse.seaweedfs ] || continue
+                out=$(timeout 5 stat "$target" 2>&1 >/dev/null) && continue
+                case "$out" in
+                  *"Transport endpoint is not connected"*)
+                    logger -t seaweedfs-stale-mounts "lazy-unmounting dead mount $target"
+                    umount -l "$target" ;;
+                esac
+              done
+
+        - name: Install the stale mount cleanup timer
+          ansible.builtin.copy:
+            dest: "/etc/systemd/system/{{ item.name }}"
+            mode: "0644"
+            content: "{{ item.content }}"
+          loop:
+            - name: seaweedfs-stale-mounts.service
+              content: |
+                [Unit]
+                Description=Unmount dead SeaweedFS FUSE mounts
+
+                [Service]
+                Type=oneshot
+                ExecStart=/usr/local/sbin/seaweedfs-stale-mounts
+            - name: seaweedfs-stale-mounts.timer
+              content: |
+                [Unit]
+                Description=Check for dead SeaweedFS FUSE mounts every minute
+
+                [Timer]
+                OnBootSec=2min
+                OnUnitActiveSec=1min
+
+                [Install]
+                WantedBy=timers.target
+          register: stale_mount_units
+
+        - name: Enable the stale mount cleanup timer
+          ansible.builtin.systemd:
+            name: seaweedfs-stale-mounts.timer
+            enabled: true
+            state: started
+            daemon_reload: "{{ stale_mount_units.changed }}"
