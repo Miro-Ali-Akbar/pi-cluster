@@ -1,10 +1,14 @@
 #!/usr/bin/env python3
 """Power button toggles the OLED.
 
-On: a status page (addresses, battery, temperature) that switches itself off after SCREEN_TIMEOUT
-seconds so it can never sit lit and burn the panel. Off: every pixel black (screen-off).
+On: a status page that switches itself off after SCREEN_TIMEOUT seconds so it can never sit lit and
+burn the panel: phone status, health of every pod (unhealthy first), firing alerts and the newest
+cluster events at the bottom. Cluster data is fetched in the background while the page is on.
+Off: every pixel black (screen-off).
 SIGUSR1 toggles too (systemctl kill -s USR1 power-screen), which is how to test without the button.
 """
+import calendar
+import json
 import os
 import re
 import signal
@@ -13,16 +17,24 @@ import subprocess
 import sys
 import threading
 import time
+import urllib.request
 
 TIMEOUT = int(os.environ.get("SCREEN_TIMEOUT", "120"))
 REFRESH = 2
 TTY = "/dev/tty1"
-FONT = "Arabic-DejaVuBold43x24"
+FONT = "Arabic-DejaVuBold36x20"  # 72 columns x 86 rows
+KUBECTL = ("/usr/local/bin/k3s", "kubectl")
+CLUSTER_REFRESH = 15
+EVENT_LINES = 22
+TOP_MARGIN = 3
+GREEN, RED, YELLOW, DIM, WHITE = "\033[92m", "\033[91m", "\033[93m", "\033[90m", "\033[97m"
 KEY_POWER = 116
 EVENT = struct.Struct("llHHi")  # struct input_event on 64-bit Linux
 
 lock = threading.Lock()
 deadline = 0.0  # 0 means off
+last_frame = [""]
+cluster = {"pods": None, "events": [], "alerts": None, "at": 0.0}
 
 
 def read(path, default="?"):
@@ -49,37 +61,111 @@ def find_power_event():
     sys.exit("power key input device not found")
 
 
-def status_lines():
+def local_hhmm(stamp):
+    try:
+        utc = time.strptime(stamp, "%Y-%m-%dT%H:%M:%SZ")
+    except ValueError:
+        return stamp[11:16]
+    return time.strftime("%H:%M", time.localtime(calendar.timegm(utc)))
+
+
+def kubectl(*args):
+    return run(*KUBECTL, *args, timeout=25)
+
+
+def fetch_cluster():
+    pods = []
+    out = kubectl("get", "pods", "-A", "--no-headers", "-o",
+                  "custom-columns=NS:.metadata.namespace,NAME:.metadata.name,READY:.status.containerStatuses[*].ready,"
+                  "PHASE:.status.phase,NODE:.spec.nodeName,RESTARTS:.status.containerStatuses[*].restartCount,"
+                  "WAIT:.status.containerStatuses[0].state.waiting.reason")
+    for line in out.splitlines():
+        f = line.split()
+        if len(f) < 7 or f[3] == "Succeeded":
+            continue
+        ready = f[2].split(",") if f[2] != "<none>" else []
+        up = sum(r == "true" for r in ready)
+        pods.append({
+            "ns": f[0], "name": f[1], "node": f[4], "ready": f"{up}/{len(ready)}",
+            "restarts": sum(int(x) for x in f[5].split(",") if x.isdigit()),
+            "ok": f[3] == "Running" and bool(ready) and up == len(ready),
+            "why": f[6] if f[6] != "<none>" else f[3],
+        })
+    events = []
+    out = kubectl("get", "events", "-A", "--sort-by=.lastTimestamp", "--no-headers", "-o",
+                  "custom-columns=T:.lastTimestamp,TYPE:.type,OBJ:.involvedObject.name,REASON:.reason,MSG:.message")
+    for line in out.splitlines()[-EVENT_LINES:]:
+        f = line.split(None, 4)
+        if len(f) >= 4:
+            events.append((local_hhmm(f[0]), f[1], f[2], f[3], f[4] if len(f) > 4 else ""))
+    alerts = None
+    ip = kubectl("-n", "monitoring", "get", "svc", "-o",
+                 "jsonpath={.items[?(@.metadata.name==\"prometheus\")].spec.clusterIP}").strip()
+    if ip:
+        try:
+            data = json.load(urllib.request.urlopen(f"http://{ip}:9090/api/v1/alerts", timeout=4))
+            alerts = sorted({a["labels"]["alertname"] for a in data["data"]["alerts"] if a["state"] == "firing"})
+        except (OSError, ValueError, KeyError):
+            pass
+    if pods:
+        cluster.update(pods=pods, events=events, alerts=alerts, at=time.time())
+
+
+def clip(text, width):
+    return text if len(text) <= width else text[: width - 1] + "~"
+
+
+def status_lines(rows, cols):
     bat = "/sys/class/power_supply/qcom-battery"
     chg = "/sys/class/power_supply/pm8150b-charger"
-    cap = read(f"{bat}/capacity")
-    state = read(f"{bat}/status")
-    cur = read(f"{bat}/current_now", "0")
-    temp = read(f"{bat}/temp", "0")
-    soc = read("/sys/class/thermal/thermal_zone0/temp", "0")
+    cur = int(read(f"{bat}/current_now", "0")) // 1000
+    temp = int(read(f"{bat}/temp", "0")) / 10
+    soc = int(read("/sys/class/thermal/thermal_zone0/temp", "0")) / 1000
     ips = re.findall(r"inet (\S+?)/", run("ip", "-4", "-o", "addr", "show"))
     ips = [i for i in ips if not i.startswith("127.") and not i.startswith("10.4")]
     sig = re.search(r"signal: (\S+ dBm)", run("iw", "dev", "wlan0", "link"))
     up = int(float(read("/proc/uptime", "0").split()[0]))
-    return [
-        "phone-1",
-        "",
-        "ip      " + " ".join(ips),
-        "wifi    " + (sig.group(1) if sig else "not connected"),
-        "",
-        f"battery {cap}%  {read(f'{chg}/status')}",
-        f"draw    {int(cur) // 1000} mA   input limit {int(read(f'{chg}/current_max', '0')) // 1000} mA",
-        f"temp    battery {int(temp) / 10:.1f} C   soc {int(soc) / 1000:.0f} C",
-        "",
-        f"k3s     {run('systemctl', 'is-active', 'k3s-agent').strip()}",
-        f"uptime  {up // 3600}h {up % 3600 // 60}m",
-        "",
-        f"(switches off in {max(0, int(deadline - time.time()))} s)",
+    lines = [
+        WHITE + clip(f"phone-1 {time.strftime('%H:%M:%S')} up {up // 86400}d{up % 86400 // 3600}h"
+                     f"  off in {max(0, int(deadline - time.time()))}s", cols),
+        clip(f"{' '.join(ips)}  wifi {sig.group(1) if sig else 'none'}", cols),
+        clip(f"bat {read(f'{bat}/capacity')}% {read(f'{chg}/status')} {cur}mA {temp:.0f}C"
+             f"  soc {soc:.0f}C  k3s {run('systemctl', 'is-active', 'k3s').strip()}", cols),
     ]
+    pods, events, alerts = cluster["pods"], cluster["events"], cluster["alerts"]
+    if pods is None:
+        return lines + ["", DIM + "reading the cluster..."]
+    bad = sum(not p["ok"] for p in pods)
+    al = "none" if alerts == [] else ", ".join(alerts) if alerts else "?"
+    lines.append((RED if alerts else GREEN) + clip("alerts: " + al, cols))
+    lines.append((RED if bad else GREEN) + clip(
+        f"PODS {len(pods) - bad}/{len(pods)} healthy (data {int(time.time() - cluster['at'])}s old)", cols))
+    room = rows - len(lines) - len(events) - 2
+    shown = sorted(pods, key=lambda p: (p["ok"], p["ns"], p["name"]))
+    for p in shown[: max(room, 0)]:
+        rs = f"r{p['restarts']}" if p["restarts"] else ""
+        right = f"{p['node'][:8]:8} {p['ready']:>3} {rs:>4}" + ("" if p["ok"] else f" {p['why']}")
+        left = clip(f"{p['ns'][:10]}/{p['name']}", cols - 2 - len(right) - 1).ljust(cols - 2 - len(right))
+        mark, colour = (GREEN + "o", YELLOW if p["restarts"] > 2 else WHITE) if p["ok"] else (RED + "X", RED)
+        lines.append(f"{mark}{colour} {left}{right}")
+    if len(shown) > room:
+        lines.append(DIM + f"+{len(shown) - max(room, 0)} more pods")
+    lines.append(WHITE + "LATEST EVENTS")
+    for t, typ, obj, reason, msg in events:
+        lines.append((YELLOW if typ == "Warning" else DIM) + clip(f"{t} {obj} {reason} {msg}", cols))
+    return lines
 
 
 def draw():
-    text = "\033[?25l\033[97;40m\033[2J\033[H" + "\n" * 8 + "\n".join(status_lines())
+    size = run("stty", "-F", TTY, "size").split()
+    rows, cols = (int(size[0]), int(size[1])) if len(size) == 2 else (86, 72)
+    # Overwrite in place (no clear-screen) so a refresh does not flash black: erase each line's
+    # tail and everything below instead. Skip the write entirely when nothing changed.
+    body = "\033[K\n".join(TOP_MARGIN * [""] + status_lines(rows - TOP_MARGIN, cols)[: rows - TOP_MARGIN])
+    text = "\033[?25l\033[97;40m\033[H" + body + "\033[K\033[J\033[0m"
+    if text == last_frame[0]:
+        return
+    last_frame[0] = text
     with open(TTY, "w") as tty:
         tty.write(text)
 
@@ -87,6 +173,10 @@ def draw():
 def screen_on():
     global deadline
     run("setfont", "-C", TTY, FONT)
+    with open(TTY, "w") as tty:
+        tty.write("\033[97;40m\033[2J")
+    last_frame[0] = ""
+    cluster.update(pods=None, at=0.0)  # never show data from the previous time the screen was on
     deadline = time.time() + TIMEOUT
     draw()
 
@@ -106,6 +196,13 @@ def toggle(*_):
             screen_on()
 
 
+def cluster_loop():
+    while True:
+        if deadline and time.time() - cluster["at"] >= CLUSTER_REFRESH:
+            fetch_cluster()
+        time.sleep(1)
+
+
 def refresher():
     while True:
         time.sleep(REFRESH)
@@ -120,6 +217,7 @@ def refresher():
 def main():
     signal.signal(signal.SIGUSR1, toggle)
     threading.Thread(target=refresher, daemon=True).start()
+    threading.Thread(target=cluster_loop, daemon=True).start()
     dev = find_power_event()
     with open(dev, "rb", buffering=0) as f:
         while True:
