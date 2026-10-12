@@ -45,6 +45,16 @@ spec:
               value: "0.0.0.0"
             - name: OT_WEB_LISTEN_ADDR
               value: "0.0.0.0"
+          # The dongle's default transmit power is 0 dBm; the nRF52840 supports +8. ot-ctl
+          # settings are runtime-only, so reapply after every start once otbr-agent is up
+          # (backgrounded, so the hook returns at once and cannot block the container).
+          lifecycle:
+            postStart:
+              exec:
+                command:
+                  - sh
+                  - -c
+                  - '(for i in $(seq 60); do ot-ctl txpower 8 2>/dev/null | grep -q Done && exit 0; sleep 2; done) >/dev/null 2>&1 &'
           resources:
             requests:
               cpu: 100m
