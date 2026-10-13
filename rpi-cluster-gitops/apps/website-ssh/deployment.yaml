@@ -29,7 +29,7 @@ spec:
           type: RuntimeDefault
       containers:
         - name: website-ssh
-          image: ghcr.io/miro-ali-akbar/website-ssh:latest
+          image: ghcr.io/miro-ali-akbar/website-ssh:latest@sha256:bad543a96b1460d2b6f626ac67048c0d90d4ef91c58dd0f62366ecafcf9c9f43
           env:
             # In-cluster, so content refreshes do not hairpin through the router.
             - name: SITE_URL

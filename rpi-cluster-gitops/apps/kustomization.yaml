@@ -12,3 +12,4 @@ resources:
   - bt-proxy
   - monitoring
   - mqtt
+  - website-ssh
