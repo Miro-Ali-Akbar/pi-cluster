@@ -1,7 +1,7 @@
 # Master + filer are pinned to pi3-1 rather than pi4: pi4 already carries
 # the k3s control-plane and Home Assistant, so it has less real headroom
 # than its total RAM suggests. Volume servers run once per physical disk -
-# pi4 hosts three SSDs, since data has to live where the disk physically is.
+# pi4 hosts two SSDs and pi3-1 two, since data has to live where the disk physically is.
 apiVersion: helm.toolkit.fluxcd.io/v2
 kind: HelmRelease
 metadata:
@@ -195,11 +195,11 @@ spec:
             memory: 64Mi
           limits:
             memory: 160Mi
-      pi4-wd:
+      pi3-1-wd:
         replicas: 1
-        rack: pi4-wd
+        rack: pi3-1-wd
         nodeSelector: |
-          kubernetes.io/hostname: pi4
+          kubernetes.io/hostname: pi3-1
         initContainers: |
           - name: verify-real-disk
             image: busybox
