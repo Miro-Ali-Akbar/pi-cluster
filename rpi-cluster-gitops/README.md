@@ -21,7 +21,7 @@ The Flux controllers run on `phone-1` (`clusters/my-cluster/flux-system/on-phone
 
 ## Storage
 
-SeaweedFS with one StorageClass, `seaweedfs-storage`: volume servers pinned per disk (2 each on `pi4` and `pi3-1`, 1 on `pi3-2`), 2x replication with every disk its own rack (the two copies of a volume are always on two different disks), master on `pi3-1`, filer on `phone-1` (metadata in `/var/lib/seaweedfs-filer`, about 20 MB; the Pis ran out of memory and the OOM killer kept taking the filer down). `seaweedfs-stale-mounts.timer` on every node unmounts dead SeaweedFS FUSE mounts, so a filer restart does not leave pods stuck. The CSI driver runs on `pi4`, `pi3-2` and `phone-1`. A volume server refuses to start without `.real-disk-marker` at the root of its disk (`sudo touch /mnt/<disk>/.real-disk-marker`).
+SeaweedFS with one StorageClass, `seaweedfs-storage`: volume servers pinned per disk (2 each on `pi4` and `pi3-1`, 1 on `pi3-2`), 2x replication with every disk its own rack (the two copies of a volume are always on two different disks), master on `pi3-1`, filer on `phone-1` (metadata in `/var/lib/seaweedfs-filer`, about 20 MB; the Pis ran out of memory and the OOM killer kept taking the filer down). `seaweedfs-stale-mounts.timer` on every node unmounts dead SeaweedFS FUSE mounts, so a filer restart does not leave pods stuck. The CSI driver runs on `pi4`, `pi3-2` and `phone-1`. A volume server refuses to start without `.real-disk-marker` in the `object_store` folder of its disk (`sudo touch /mnt/<disk>/object_store/.real-disk-marker`).
 
 ## Disaster recovery
 

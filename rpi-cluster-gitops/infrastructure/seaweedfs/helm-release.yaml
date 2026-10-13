@@ -106,7 +106,7 @@ spec:
     # it, a disconnected USB disk's hostPath would silently fall back to an
     # empty directory on the node's SD card instead of failing. The
     # required marker file (`.real-disk-marker`, not committed - see
-    # README) must exist at the disk's root or the pod refuses to start.
+    # README) must exist in the disk's object_store folder (the chart mounts that folder, not the disk root) or the pod refuses to start.
     volumes:
       pi3-1-disk1:
         replicas: 1
