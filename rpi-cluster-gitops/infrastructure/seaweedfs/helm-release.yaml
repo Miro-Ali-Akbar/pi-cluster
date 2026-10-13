@@ -96,6 +96,11 @@ spec:
     # physical disk below, each pinned to the node that disk is on.
     volume:
       enabled: false
+      # The chart only renders a group's own initContainers when this base value is
+      # non-empty, so without it the verify-real-disk guards below were silently dropped
+      # and a volume server could start on an unmounted disk (the SD card). Every group
+      # overrides it.
+      initContainers: "[]"
 
     # Every group below carries a "verify-real-disk" initContainer: without
     # it, a disconnected USB disk's hostPath would silently fall back to an
