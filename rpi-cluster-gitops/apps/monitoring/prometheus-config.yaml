@@ -90,6 +90,10 @@ data:
             expr: smart_pending_sectors > 0 or increase(smart_reallocated_sectors[7d]) > 0
             annotations:
               summary: "{{ $labels.node }} {{ $labels.device }} ({{ $labels.model }}) has bad or growing reallocated sectors"
+          - alert: UsbDisconnect
+            expr: increase(usb_disconnects_total[15m]) > 0
+            annotations:
+              summary: "{{ $labels.node }}: a USB device disconnected (a hub or power drop; check its disks and the Thread/Zigbee dongle)"
           - alert: DiskHot
             expr: smart_temperature_celsius > 60
             for: 15m

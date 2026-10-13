@@ -441,12 +441,14 @@
             content: |
               #!/bin/bash
               # Writes SMART health, reallocated/pending sectors, temperature and power-on hours
-              # of every USB disk as Prometheus textfile metrics.
+              # of every USB disk as Prometheus textfile metrics, plus how many USB devices
+              # the kernel has seen disconnect since boot (a hub or power drop looks like that).
               set -u
               dir=/var/lib/node_exporter
               mkdir -p "$dir"
               tmp=$(mktemp -p "$dir" .smart.XXXXXX)
               {
+                echo "usb_disconnects_total $(dmesg | grep -c 'USB disconnect')"
                 for d in $(lsblk -dno NAME,TRAN | awk '$2=="usb"{print $1}'); do
                   model=$(lsblk -dno MODEL "/dev/$d" | sed 's/ *$//; s/"//g')
                   l="device=\"$d\",model=\"$model\""
