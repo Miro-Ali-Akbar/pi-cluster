@@ -58,12 +58,14 @@ spec:
       data:
         type: hostPath
         hostPathPrefix: /var/lib/seaweedfs-filer
+      # Large uploads buffer chunks here; 384Mi was OOM-killed on multi-GB transfers, and the
+      # phone has about 4 GB free.
       resources:
         requests:
           cpu: 50m
-          memory: 64Mi
+          memory: 128Mi
         limits:
-          memory: 384Mi
+          memory: 1Gi
 
     # S3-compatible gateway - lets us generate presigned download links for
     # individual NAS files. A SeaweedFS "bucket" is just a top-level
@@ -176,7 +178,7 @@ spec:
             cpu: 50m
             memory: 64Mi
           limits:
-            memory: 160Mi
+            memory: 256Mi
       pi4-disk2:
         replicas: 1
         rack: pi4-disk2
@@ -199,7 +201,7 @@ spec:
             cpu: 50m
             memory: 64Mi
           limits:
-            memory: 160Mi
+            memory: 256Mi
       pi3-1-wd:
         replicas: 1
         rack: pi3-1-wd

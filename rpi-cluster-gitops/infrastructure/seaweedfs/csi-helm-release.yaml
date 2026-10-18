@@ -142,7 +142,7 @@ spec:
           cpu: 50m
           memory: 64Mi
         limits:
-          memory: 192Mi
+          memory: 384Mi
 
     seaweedfsCsiPlugin:
       resources:
