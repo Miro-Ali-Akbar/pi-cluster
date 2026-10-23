@@ -12,7 +12,7 @@ spec:
   chart:
     spec:
       chart: seaweedfs
-      version: "4.x"
+      version: "4.48.0" # pinned: chart 4.49.0 pointed at an image tag that was not published, which took the NAS down
       sourceRef:
         kind: HelmRepository
         name: seaweedfs
