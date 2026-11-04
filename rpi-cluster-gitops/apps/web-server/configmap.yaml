@@ -13,6 +13,9 @@ data:
       root /git/website;
       index index.html;
 
+      # Unlisted routes from the SOPS-encrypted web-server-cv Secret (absent: no-op).
+      include /etc/nginx/secret.d/*.conf;
+
       location / {
         try_files $uri $uri/ =404;
       }

@@ -1,0 +1,23 @@
+apiVersion: v1
+kind: Secret
+metadata:
+    name: web-server-cv
+    namespace: web-server
+type: Opaque
+stringData:
+    cv.conf: ENC[AES256_GCM,data:23ShWTqb8oXOvMmlg+5Y70+L22AweURfgFOOFXdCSvYYSOf2OqZjvZp1BOda73ihOI6ZEPwLIKyK4N9Y/4Xz9Whdjl9l8Pr38mNo2D2fzjF8wmnHWwoJRduaGOPZUHTuiA9z9WBuBHP2CLsRj9va9hlFdXm/+6Jfas2gOUKDPbZ/ldfszOv/IEyAwJqN2eN2+iOZG7zZLZgvqHf7kU2thPZohqHN6ZqqP+HyELpRNbYmbkJ3+kYHe5zNSnN3zJLwgborZrAsFq7VhkR4cDeO5i1VtIZVWSPGwlrtxZ9xDDP2MSqYj1G+SYR3Gc39cEQiyY3tzZq5Oqzw/nLm7GlQi7KBPbnvfznDUN+Kv4dgKgaVxU/qsc7xNaE+UqGqYCs57Ui/jrjUbFVZRVSn2QcJ8VjfwWUfFGwXcdy/PmkELYlavFhlqNAvR1M6oW421VJHZjZj5RaQTrz6QgBtCpuDjtZkptwCU0n67VZQRYzkDjyqFlqDuhffMCVcmAx4Ja+Zl8GhCY6Aa9Pkmyz5gswjYvyKKe320vx1wELyuJsOr0DPTiFcuzlhazVYaRp5KmVhP/us0d50aHLy5oK1N0uUwyPl/EwyKnf+cp0ZRk/7st9jE8aGGDToyO/L7tjSjbDiOJFJlnVEcZepKHJft2DjayjuZ2wSlf0Ox48yHfbh3XhPe8fKTIaAyw+mKt7Epe0BTkaoo1Fqth9wNIOo9lWbSdp38tOlOzhtLZXoOdnep78oqnjgIWqrRCi4X4jDRz5j6h0gGRHkHlpzwfEHuNesbvpkW1Ahc4+IBWYC2sG8IQxwhwN0leOGi/b2OA==,iv:3GgdrRfhyJA4zy3iI+/EchxrKbyqUsJe0A+b4EspYj8=,tag:2tYyvLYPOySB9r0Nd249BQ==,type:str]
+sops:
+    age:
+        - enc: |
+            -----BEGIN AGE ENCRYPTED FILE-----
+            YWdlLWVuY3J5cHRpb24ub3JnL3YxCi0+IFgyNTUxOSA4ZjdRSENlb3Q2UWkzUXRJ
+            bGowTDZGV05BWWNLU285YjE1djlkS3UyeVhBCk9DSW94eWJNUGVmZG9BdUtWbklK
+            cG91STd5a2ZKZ0VVQmtjamxyUW5oajAKLS0tIHZpVmpVVkd5TDRtcUtIaWZ0SElx
+            THh6NEIvZkdWWGlxZXA1ZTZnTHhpRGMKUhTXPlIN2ZXOSy4yJPmD9DZoNPBsf/7W
+            eb2PpLQa7ZEKwuJkw3Rjt8TzSaUfQT/Cb5l3dGRk2OYIF8Sap9NxsQ==
+            -----END AGE ENCRYPTED FILE-----
+          recipient: age1742pp7memrxpg9w9zm5m5aups35pkh9tqduzex802kawsec74aqq8xz3eu
+    encrypted_regex: ^(data|stringData)$
+    lastmodified: "2026-11-04T20:27:36Z"
+    mac: ENC[AES256_GCM,data:EDmpE4WH7iBrauFnlAZX2cO/2qPj3qGu7kP/hERkbfMQwzaM/I5QSyk8r0mI11rj5uYaJ0M34kuZRt/1UzBa2xs8jpHj71RwYLhBCluBcydDYW+H7ruc63k1CiPekItdyAi78SXiAwjlhN6FDHWWAS3/ExBtWldr0qexKKvJI/w=,iv:vZTKHC9pX22co+gfYH7rLYe5NMOi+vYDklc/PM4sUsE=,tag:9cnrQdVrq4VJoQjoCsVzXg==,type:str]
+    version: 3.13.3
