@@ -1,0 +1,192 @@
+# Nightly: merge identical files into hard links so each is stored once. Identity comes from
+# the filer's per-chunk checksums, so no file content is read. Only archival folders, files of
+# 1 MB or more, and copies whose size, modification time, owner and mode already match, so the
+# merge changes nothing a two-way sync (FreeFileSync) can see. DRY_RUN=1 only logs.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: dedup-links
+  namespace: nas
+data:
+  dedup.py: |
+    import concurrent.futures, datetime, json, os, secrets, sys, time
+    import urllib.error, urllib.parse, urllib.request
+
+    FILER = os.environ["FILER"]
+    BUCKET = os.environ["BUCKET"].rstrip("/")
+    MOUNT = os.environ.get("MOUNT", "/share")
+    FOLDERS = os.environ.get("FOLDERS", "Photos,Backups,Film,Modding,Music,Minecraft").split(",")
+    MIN_SIZE = int(os.environ.get("MIN_SIZE", "1000000"))
+    MIN_AGE = float(os.environ.get("MIN_AGE_HOURS", "24")) * 3600
+    MAX_LINKS = int(os.environ.get("MAX_LINKS", "300"))
+    DRY = os.environ.get("DRY_RUN", "1") != "0"
+    SKIP = {"sync.ffs_db", "sync.ffs_lock"}
+
+
+    def get(path, query=""):
+        r = urllib.request.Request(FILER + urllib.parse.quote(path) + query, headers={"Accept": "application/json"})
+        with urllib.request.urlopen(r, timeout=60) as resp:
+            return json.load(resp)
+
+
+    def list_dir(path):
+        out, last = [], ""
+        while True:
+            try:
+                ents = get(path + "/", "?limit=1000&lastFileName=" + urllib.parse.quote(last)).get("Entries") or []
+            except urllib.error.HTTPError as e:
+                if e.code == 404:
+                    return out
+                raise
+            out += ents
+            if len(ents) < 1000:
+                return out
+            last = ents[-1]["FullPath"].rsplit("/", 1)[1]
+
+
+    def ts(s):
+        return datetime.datetime.fromisoformat(s.replace("Z", "+00:00")).timestamp()
+
+
+    def sig(e):
+        return tuple((c["size"], c.get("e_tag")) for c in (e.get("chunks") or []))
+
+
+    if not os.path.ismount(MOUNT):
+        raise SystemExit("%s is not a mount: refusing to run" % MOUNT)
+
+    now = time.time()
+    records, level = [], [BUCKET + "/" + f for f in FOLDERS]
+    with concurrent.futures.ThreadPoolExecutor(4) as ex:  # metadata only, nothing is read through the mount
+        while level:
+            nxt = []
+            for ents in ex.map(list_dir, level):
+                for e in ents:
+                    if e["Mode"] >= 2**31:
+                        nxt.append(e["FullPath"])
+                    elif (e["FileSize"] >= MIN_SIZE and e["FullPath"].rsplit("/", 1)[1] not in SKIP
+                          and not e.get("Content") and e.get("chunks")
+                          and ts(e["Mtime"]) < now - MIN_AGE and ts(e["Crtime"]) < now - MIN_AGE):
+                        records.append(e)
+            level = nxt
+
+    groups = {}
+    for e in records:
+        key = (e["FileSize"], sig(e), e["Mtime"], e["Uid"], e["Gid"], e["Mode"])
+        groups.setdefault(key, []).append(e)
+
+    todo = []
+    for key, members in groups.items():
+        if len(members) < 2:
+            continue
+        members.sort(key=lambda m: (m.get("HardLinkId") is None, m["FullPath"]))
+        keeper = members[0]
+        for m in members[1:]:
+            if m.get("HardLinkId") and m["HardLinkId"] == keeper.get("HardLinkId"):
+                continue  # already merged
+            todo.append((key[0], keeper, m))
+    todo.sort(key=lambda t: -t[0])
+    print("%d files considered, %d to merge (%.2f GB), dry run: %s" % (
+        len(records), len(todo), sum(t[0] for t in todo) / 1e9, DRY))
+
+    def unchanged(e):
+        d = get(e["FullPath"], "?metadata=true")
+        return d["FileSize"] == e["FileSize"] and sig(d) == sig(e) and d["Mtime"] == e["Mtime"]
+
+    def local(path):
+        assert path.startswith(BUCKET + "/")
+        return MOUNT + path[len(BUCKET):]
+
+    linked = freed = errors = 0
+    for size, keeper, dup in todo[:MAX_LINKS]:
+        k, d = keeper["FullPath"], dup["FullPath"]
+        if DRY:
+            print("would link %s -> %s (%d bytes)" % (d, k, size))
+            continue
+        tmp = os.path.join(os.path.dirname(local(d)), ".dedup-" + secrets.token_hex(4))
+        try:
+            if not (unchanged(keeper) and unchanged(dup)):
+                print("skipped (changed): " + d)
+                continue
+            os.link(local(k), tmp)  # shares one inode and one hard-link entry with the keeper
+            a, b = os.stat(local(k)), os.stat(tmp)
+            if a.st_ino != b.st_ino or b.st_nlink < 2:
+                raise OSError("link did not share the inode")
+            os.rename(tmp, local(d))  # atomic: the name is never missing
+            print("linked %s -> %s (%d bytes)" % (d, k, size))
+            linked += 1
+            freed += size
+        except Exception as ex:
+            errors += 1
+            print("ERROR %s: %s" % (d, ex))
+            try:
+                os.unlink(tmp)
+            except OSError:
+                pass
+            if errors >= 5:
+                raise SystemExit("too many errors, stopping")
+    print("linked %d files, %.2f GB no longer stored twice, %d errors" % (linked, freed / 1e9, errors))
+    sys.exit(1 if errors else 0)
+---
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: dedup-links
+  namespace: nas
+spec:
+  schedule: "30 3 * * *"
+  timeZone: Europe/Stockholm
+  concurrencyPolicy: Forbid
+  successfulJobsHistoryLimit: 7
+  failedJobsHistoryLimit: 3
+  jobTemplate:
+    spec:
+      backoffLimit: 0
+      activeDeadlineSeconds: 3600
+      template:
+        spec:
+          restartPolicy: Never
+          automountServiceAccountToken: false
+          # Same node as the Samba pod, so the job reuses its mount of the share.
+          nodeSelector:
+            kubernetes.io/hostname: pi4
+          containers:
+            - name: dedup
+              image: python:3.12-alpine@sha256:b64631e04e4920160c50fbe8d8df828f7f35f06f425cb44aa09bca53e708a35a
+              command: ["python3", "/scripts/dedup.py"]
+              env:
+                - name: PYTHONDONTWRITEBYTECODE
+                  value: "1"
+                - name: FILER
+                  value: http://seaweedfs-filer.seaweedfs.svc.cluster.local:8888
+                - name: BUCKET
+                  value: /buckets/pvc-3669621a-5121-466a-be7b-05cbb49a58c2
+                - name: DRY_RUN
+                  value: "1"
+                - name: MAX_LINKS
+                  value: "300"
+              resources:
+                requests:
+                  cpu: 20m
+                  memory: 64Mi
+                limits:
+                  memory: 256Mi
+              securityContext:
+                allowPrivilegeEscalation: false
+                readOnlyRootFilesystem: true
+                capabilities:
+                  drop: [ALL]
+                  add: [DAC_OVERRIDE, FOWNER]
+              volumeMounts:
+                - name: scripts
+                  mountPath: /scripts
+                  readOnly: true
+                - name: data
+                  mountPath: /share
+          volumes:
+            - name: scripts
+              configMap:
+                name: dedup-links
+            - name: data
+              persistentVolumeClaim:
+                claimName: nas-data

@@ -7,3 +7,4 @@ resources:
   - service.yaml
   - nas-samba-credentials.sops.yaml
   - recycle-purge.yaml
+  - dedup-links.yaml
