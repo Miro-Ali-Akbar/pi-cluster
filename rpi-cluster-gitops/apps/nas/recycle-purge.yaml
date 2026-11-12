@@ -1,0 +1,139 @@
+# Samba's recycle bin (.deleted in the share) never empties itself. This job deletes
+# recycled files 30 days after it first saw them, then removes the empty folders.
+# It tracks first-seen times in a small state file on the filer (outside the share),
+# because recycled files keep their old modification times.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: recycle-purge
+  namespace: nas
+data:
+  purge.py: |
+    import json, os, time, urllib.error, urllib.parse, urllib.request
+
+    FILER = os.environ["FILER"]
+    ROOT = os.environ["PURGE_ROOT"].rstrip("/")
+    STATE = os.environ["STATE_PATH"]
+    MAX_AGE = float(os.environ.get("MAX_AGE_DAYS", "30")) * 86400
+    MAX_DELETE = int(os.environ.get("MAX_DELETE", "2000"))
+    DRY = os.environ.get("DRY_RUN") == "1"
+    assert ROOT.endswith("/.deleted") or "recycle-purge-test" in ROOT, "refusing: not a recycle bin"
+
+
+    def req(method, path, data=None, headers=None, query=""):
+        r = urllib.request.Request(FILER + urllib.parse.quote(path) + query, data=data, method=method, headers=headers or {})
+        return urllib.request.urlopen(r, timeout=60)
+
+
+    def list_dir(path):
+        out, last = [], ""
+        while True:
+            q = "?limit=1000&lastFileName=" + urllib.parse.quote(last)
+            with req("GET", path + "/", headers={"Accept": "application/json"}, query=q) as r:
+                entries = json.load(r).get("Entries") or []
+            out += entries
+            if len(entries) < 1000:
+                return out
+            last = entries[-1]["FullPath"].rsplit("/", 1)[1]
+
+
+    def load_state():
+        try:
+            with req("GET", STATE) as r:
+                return json.load(r)
+        except urllib.error.HTTPError as e:
+            if e.code == 404:
+                return {}
+            raise
+
+
+    now = time.time()
+    state = load_state()
+    seen, files, dirs = {}, [], []
+    stack = [ROOT]
+    while stack:  # walk the bin; a failed listing aborts the run before anything is deleted
+        d = stack.pop()
+        dirs.append(d)
+        for e in list_dir(d):
+            if e["Mode"] >= 2**31:
+                stack.append(e["FullPath"])
+            else:
+                key = "%s|%s|%s" % (e["FullPath"], e["FileSize"], e["Mtime"])
+                seen[key] = state.get(key, now)
+                files.append((e["FullPath"], e["FileSize"], key))
+
+    expired = [f for f in files if now - seen[f[2]] >= MAX_AGE]
+    print("tracked %d files, %d new, %d expired" % (len(files), sum(1 for f in files if f[2] not in state), len(expired)))
+    if len(expired) > MAX_DELETE:
+        raise SystemExit("refusing to delete %d files in one run (limit %d)" % (len(expired), MAX_DELETE))
+
+    deleted_bytes = 0
+    for path, size, key in expired:
+        print(("would delete " if DRY else "deleting ") + path)
+        if not DRY:
+            req("DELETE", path).read()
+            seen.pop(key)
+        deleted_bytes += size
+
+    if not DRY:
+        remaining = {os.path.dirname(f[0]) for f in files if f[2] in seen}
+        for d in sorted(dirs, key=len, reverse=True):  # deepest first; only folders with nothing left in them
+            if d == ROOT or any(r == d or r.startswith(d + "/") for r in remaining):
+                continue
+            try:
+                req("DELETE", d).read()
+            except urllib.error.HTTPError:
+                pass
+        req("PUT", STATE, data=json.dumps(seen).encode(), headers={"Content-Type": "application/json"}).read()
+    print("freed %.2f GB" % (deleted_bytes / 1e9))
+---
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: recycle-purge
+  namespace: nas
+spec:
+  schedule: "17 4 * * *"
+  concurrencyPolicy: Forbid
+  successfulJobsHistoryLimit: 1
+  failedJobsHistoryLimit: 2
+  jobTemplate:
+    spec:
+      backoffLimit: 1
+      activeDeadlineSeconds: 1800
+      template:
+        spec:
+          restartPolicy: Never
+          automountServiceAccountToken: false
+          containers:
+            - name: purge
+              image: python:3.12-alpine@sha256:b64631e04e4920160c50fbe8d8df828f7f35f06f425cb44aa09bca53e708a35a
+              command: ["python3", "/scripts/purge.py"]
+              env:
+                - name: FILER
+                  value: http://seaweedfs-filer.seaweedfs.svc.cluster.local:8888
+                - name: PURGE_ROOT
+                  value: /buckets/pvc-3669621a-5121-466a-be7b-05cbb49a58c2/.deleted
+                - name: STATE_PATH
+                  value: /etc/recycle-purge/state.json
+                - name: MAX_AGE_DAYS
+                  value: "30"
+              resources:
+                requests:
+                  cpu: 20m
+                  memory: 32Mi
+                limits:
+                  memory: 128Mi
+              securityContext:
+                allowPrivilegeEscalation: false
+                readOnlyRootFilesystem: true
+                capabilities:
+                  drop: [ALL]
+              volumeMounts:
+                - name: scripts
+                  mountPath: /scripts
+                  readOnly: true
+          volumes:
+            - name: scripts
+              configMap:
+                name: recycle-purge
