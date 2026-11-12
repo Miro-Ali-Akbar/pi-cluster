@@ -162,7 +162,7 @@ spec:
                 - name: BUCKET
                   value: /buckets/pvc-3669621a-5121-466a-be7b-05cbb49a58c2
                 - name: DRY_RUN
-                  value: "1"
+                  value: "0"
                 - name: MAX_LINKS
                   value: "300"
               resources:
