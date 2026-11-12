@@ -52,6 +52,12 @@ data:
         return tuple((c["size"], c.get("e_tag")) for c in (e.get("chunks") or []))
 
 
+    def mtime_ns(s):
+        whole, _, frac = s.rstrip("Z").partition(".")
+        sec = datetime.datetime.fromisoformat(whole).replace(tzinfo=datetime.timezone.utc).timestamp()
+        return int(sec) * 10**9 + int((frac or "0").ljust(9, "0")[:9])
+
+
     if not os.path.ismount(MOUNT):
         raise SystemExit("%s is not a mount: refusing to run" % MOUNT)
 
@@ -113,6 +119,13 @@ data:
             if a.st_ino != b.st_ino or b.st_nlink < 2:
                 raise OSError("link did not share the inode")
             os.rename(tmp, local(d))  # atomic: the name is never missing
+            try:  # linking sets the modification time to now; put the original back (it is shared by both names)
+                want = mtime_ns(dup["Mtime"])
+                os.utime(local(d), ns=(os.stat(local(d)).st_atime_ns, want))
+                if os.stat(local(d)).st_mtime_ns != want:
+                    raise OSError("modification time not restored")
+            except Exception as ex:
+                raise SystemExit("stopping, could not restore the modification time of %s: %s" % (d, ex))
             print("linked %s -> %s (%d bytes)" % (d, k, size))
             linked += 1
             freed += size
