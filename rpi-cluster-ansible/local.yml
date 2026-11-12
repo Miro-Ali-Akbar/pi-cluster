@@ -421,6 +421,24 @@
             key: "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIPbH8JpkeTPOv6kGtFD8Gl2l6j0UadEG6ZyL0P4kfIUD phone-1-standby-push"
             key_options: 'command="/usr/local/sbin/cluster-standby-receive",restrict'
 
+    # --- every Pi: a data disk that is not mounted must not turn into a folder on the SD card ---
+    # With the mount point (the folder underneath the mount) immutable, a pod that needs an unmounted
+    # disk fails to start instead of writing to the SD card. Mounting over it and writing to the
+    # mounted disk are unaffected. The folder is reached through a bind mount of / because, while a
+    # disk is mounted, its path points at the disk itself.
+    - name: Make empty disk mount points immutable
+      ansible.builtin.shell: |
+        set -eu
+        tmp=$(mktemp -d)
+        mount --bind / "$tmp"
+        trap 'umount "$tmp"; rmdir "$tmp"' EXIT
+        for d in $(awk '$1 !~ /^#/ && $2 ~ /^\/mnt\// {print $2}' /etc/fstab); do
+          [ -d "$tmp$d" ] || continue
+          lsattr -d "$tmp$d" | cut -c5 | grep -q i || { chattr +i "$tmp$d"; echo changed; }
+        done
+      register: immutable_mounts
+      changed_when: "'changed' in immutable_mounts.stdout"
+
     # --- every Pi: disk health metrics for Prometheus, no iSCSI ---
     # SMART data from the USB SSDs goes to node-exporter's textfile collector
     # (the DaemonSet mounts /var/lib/node_exporter); alerts are in
