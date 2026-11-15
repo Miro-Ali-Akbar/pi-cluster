@@ -77,6 +77,53 @@ data:
             action: drop
           - regex: (id|image|name)
             action: labeldrop
+      # Service probes from inside the cluster (blackbox-exporter). The public names go through the
+      # router, so they cover the whole path to the edge proxy, the SSH site and Home Assistant.
+      - job_name: probe-http
+        metrics_path: /probe
+        params:
+          module: [http_2xx]
+        static_configs:
+          - targets:
+            - https://miro.zip
+            - https://home.miro.zip
+            - http://web-server.web-server.svc.cluster.local
+        relabel_configs:
+          - source_labels: [__address__]
+            target_label: __param_target
+          - source_labels: [__param_target]
+            target_label: instance
+          - target_label: __address__
+            replacement: blackbox-exporter.monitoring.svc:9115
+      - job_name: probe-ssh
+        metrics_path: /probe
+        params:
+          module: [ssh_banner]
+        static_configs:
+          - targets:
+            - miro.zip:22
+        relabel_configs:
+          - source_labels: [__address__]
+            target_label: __param_target
+          - source_labels: [__param_target]
+            target_label: instance
+          - target_label: __address__
+            replacement: blackbox-exporter.monitoring.svc:9115
+      - job_name: probe-tcp
+        metrics_path: /probe
+        params:
+          module: [tcp_connect]
+        static_configs:
+          - targets:
+            - 192.168.0.174:445
+            - 192.168.0.179:1883
+        relabel_configs:
+          - source_labels: [__address__]
+            target_label: __param_target
+          - source_labels: [__param_target]
+            target_label: instance
+          - target_label: __address__
+            replacement: blackbox-exporter.monitoring.svc:9115
       - job_name: prometheus
         static_configs:
           - targets: ["localhost:9090"]
@@ -214,3 +261,8 @@ data:
             for: 1m
             annotations:
               summary: "Job {{ $labels.namespace }}/{{ $labels.job_name }} failed in the last 24 hours"
+          - alert: ProbeFailed
+            expr: probe_success == 0
+            for: 5m
+            annotations:
+              summary: "{{ $labels.instance }} is not answering ({{ $labels.job }})"
