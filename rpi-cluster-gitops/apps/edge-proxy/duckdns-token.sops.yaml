@@ -1,0 +1,23 @@
+apiVersion: v1
+kind: Secret
+metadata:
+    name: duckdns-token
+    namespace: edge-proxy
+stringData:
+    token: ENC[AES256_GCM,data:jl9QvziBq2i57mWQFdNVW9kKueQDYmh1HzoZJHZK9Xgo5JLK,iv:TE73k4ZR0DGgy+9JwqqS4gyO6rlVdUnt5Coo3tbCWuY=,tag:47KAVsP06T5FFhRivoAHYg==,type:str]
+type: Opaque
+sops:
+    age:
+        - enc: |
+            -----BEGIN AGE ENCRYPTED FILE-----
+            YWdlLWVuY3J5cHRpb24ub3JnL3YxCi0+IFgyNTUxOSBhRWNSdUZZSE83M2E5VGlS
+            Sm9BbmsyU2QzbDJyVjBWMlhFYlE1b29EbnhzCjJCWml2bkRuUDQ5RTZsaVdoc3Vm
+            ZHhUVkl6cW9nbzJLMU5GTEVaNHZ0NWsKLS0tIDJFaEU2V3d1M2tET1JVYUpiclVI
+            MEpjZStEK2NIeEt0a1I3amsybit5aG8KDsD9JA8oU1BWbV9BVVHDUPFZUq9b7DEU
+            0vUuRNTfr2xozZEYK42llsydSYNk0ZuT+BSaVfYYTrVClxnIZuCnzw==
+            -----END AGE ENCRYPTED FILE-----
+          recipient: age1742pp7memrxpg9w9zm5m5aups35pkh9tqduzex802kawsec74aqq8xz3eu
+    encrypted_regex: ^(data|stringData)$
+    lastmodified: "2026-11-15T17:32:03Z"
+    mac: ENC[AES256_GCM,data:296v8XmnfdO7WtXbUSbPia+EtvXOPIBIdAZjHnCON2cFhcKJPTgLpI0Kh2D8mm4pl1D4FEHutYSkR+JeSrybW8H7CC3zOwvpkXphdCaP1G8IE/nahO9koVvaSGKOis7udMDgZC1nJs9NCUXnnznikGdJrEkPj/bqi+ynYH7TmKA=,iv:B7Y5SvQK93BAYBBlYihV5lbJQUa/DzUtKTGnBWHFuR0=,tag:QG13N7tzt1xn+mXdp/7pEA==,type:str]
+    version: 3.13.3

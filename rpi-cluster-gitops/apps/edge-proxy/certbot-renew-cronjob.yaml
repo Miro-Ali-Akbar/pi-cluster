@@ -18,19 +18,28 @@ spec:
           initContainers:
             - name: certbot-renew
               image: certbot/certbot:latest
+              # No --webroot here: each certificate's renewal file decides how it renews. miro.zip and
+              # file.miro.zip use the DuckDNS DNS-01 hooks (port 80 is refused from the internet).
               command:
                 - certbot
                 - renew
-                - --webroot
-                - -w
-                - /var/www/acme
                 - --deploy-hook
                 - touch /shared/renewed
+              env:
+                - name: DUCKDNS_DOMAIN
+                  value: "thearmorassistant"
+                - name: DUCKDNS_TOKEN
+                  valueFrom:
+                    secretKeyRef:
+                      name: duckdns-token
+                      key: token
               volumeMounts:
                 - name: acme-webroot
                   mountPath: /var/www/acme
                 - name: tls-certs
                   mountPath: /etc/letsencrypt
+                - name: hooks
+                  mountPath: /scripts
                 - name: shared
                   mountPath: /shared
           containers:
@@ -58,5 +67,9 @@ spec:
               hostPath:
                 path: /srv/tls-certs
                 type: DirectoryOrCreate
+            - name: hooks
+              configMap:
+                name: certbot-duckdns-hooks
+                defaultMode: 0755
             - name: shared
               emptyDir: {}
