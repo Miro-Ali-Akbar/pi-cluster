@@ -9,3 +9,4 @@ resources:
   - alertmanager-webhook.sops.yaml
   - node-exporter.yaml
   - kube-state-metrics.yaml
+  - blackbox-exporter.yaml

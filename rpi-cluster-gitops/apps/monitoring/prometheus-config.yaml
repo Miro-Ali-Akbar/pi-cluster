@@ -48,6 +48,36 @@ data:
       - job_name: kube-state-metrics
         static_configs:
           - targets: ["kube-state-metrics.monitoring.svc:8080"]
+      - job_name: cadvisor
+        # Container memory and CPU per pod, straight from each kubelet (port 10250, authenticated
+        # with this pod's service account token). Only a few metrics are kept to stay small.
+        scheme: https
+        metrics_path: /metrics/cadvisor
+        authorization:
+          credentials_file: /var/run/secrets/kubernetes.io/serviceaccount/token
+        tls_config:
+          ca_file: /var/run/secrets/kubernetes.io/serviceaccount/ca.crt
+          insecure_skip_verify: true
+        kubernetes_sd_configs:
+          - role: node
+        relabel_configs:
+          - source_labels: [__meta_kubernetes_node_address_InternalIP]
+            replacement: "$1:10250"
+            target_label: __address__
+          - source_labels: [__meta_kubernetes_node_name]
+            target_label: node
+        metric_relabel_configs:
+          - source_labels: [__name__]
+            regex: container_(memory_working_set_bytes|spec_memory_limit_bytes|cpu_usage_seconds_total|oom_events_total)
+            action: keep
+          - source_labels: [container]
+            regex: ""
+            action: drop
+          - source_labels: [container]
+            regex: POD
+            action: drop
+          - regex: (id|image|name)
+            action: labeldrop
       - job_name: prometheus
         static_configs:
           - targets: ["localhost:9090"]
@@ -162,3 +192,26 @@ data:
             for: 5m
             annotations:
               summary: "phone-1 battery above 45 C"
+          - alert: ContainerNearMemoryLimit
+            expr: >
+              max by (namespace, pod, container, node) (container_memory_working_set_bytes)
+              / on (namespace, pod, container, node)
+              max by (namespace, pod, container, node) (container_spec_memory_limit_bytes > 0)
+              > 0.9
+            for: 15m
+            annotations:
+              summary: "{{ $labels.namespace }}/{{ $labels.pod }} ({{ $labels.container }}) is at {{ $value | humanizePercentage }} of its memory limit and will be OOM-killed"
+          - alert: ContainerOOMKilled
+            expr: >
+              increase(kube_pod_container_status_restarts_total[30m]) > 0
+              and on (namespace, pod, container)
+              kube_pod_container_status_last_terminated_reason{reason="OOMKilled"} == 1
+            annotations:
+              summary: "{{ $labels.namespace }}/{{ $labels.pod }} ({{ $labels.container }}) was killed for running out of memory"
+          - alert: JobFailed
+            expr: >
+              kube_job_failed{condition="true"} == 1
+              and on (namespace, job_name) (time() - kube_job_status_start_time) < 86400
+            for: 1m
+            annotations:
+              summary: "Job {{ $labels.namespace }}/{{ $labels.job_name }} failed in the last 24 hours"
