@@ -31,7 +31,8 @@ systemctl --global mask pipewire.socket pipewire-pulse.socket pipewire.service p
 
 # The power key must never shut the node down (it toggles the screen instead, see power-screen)
 mkdir -p /etc/systemd/logind.conf.d
-install -m 644 10-power-key.conf /etc/systemd/logind.conf.d/
+install -m 644 10-power-key.conf /etc/systemd/logind.conf.d/zz-power-key.conf
+rm -f /etc/systemd/logind.conf.d/10-power-key.conf /etc/systemd/logind.conf.d/90-power-key.conf
 systemctl kill -s HUP systemd-logind
 
 # Battery limiter, OLED off, power button screen toggle, Wi-Fi soak logger

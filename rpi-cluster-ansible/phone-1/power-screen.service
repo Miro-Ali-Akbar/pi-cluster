@@ -1,6 +1,5 @@
 [Unit]
 Description=Power button toggles the OLED (status page or black)
-After=screen-off.service
 
 [Service]
 ExecStart=/usr/local/sbin/power-screen
