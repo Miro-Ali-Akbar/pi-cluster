@@ -48,6 +48,15 @@ NODE_IP=$(ip -4 -o addr show wlan0 | awk '{print $4}' | cut -d/ -f1)
 curl -sfL https://get.k3s.io | INSTALL_K3S_VERSION="v1.36.5+k3s1" INSTALL_K3S_SKIP_START="$([ "${K3S_START:-}" = true ] && echo false || echo true)" \
   INSTALL_K3S_EXEC="server --node-name phone-1 --node-ip $NODE_IP --advertise-address $NODE_IP --tls-san $NODE_IP --flannel-iface wlan0 --node-label node-type=phone --node-taint node-type=phone:NoSchedule --kubelet-arg=fail-swap-on=false --kubelet-arg=eviction-hard=memory.available<600Mi --kubelet-arg=system-reserved=memory=400Mi --disable traefik --disable metrics-server --disable local-storage --write-kubeconfig-mode 600" sh -s -
 
+# The phone boots with a wrong clock: start k3s only after chrony has synced (bounded wait),
+# and make sure the old agent unit from the pi4 control-plane days never runs beside the server.
+mkdir -p /etc/systemd/system/k3s.service.d /etc/systemd/system/chrony-wait.service.d
+printf '[Unit]\nWants=chrony-wait.service\nAfter=chrony-wait.service time-sync.target\n' > /etc/systemd/system/k3s.service.d/10-time-sync.conf
+printf '[Service]\nTimeoutStartSec=180\n' > /etc/systemd/system/chrony-wait.service.d/10-timeout.conf
+systemctl daemon-reload
+systemctl enable chrony-wait.service
+systemctl disable --now k3s-agent.service 2>/dev/null || true
+
 # New Pis fetch the join token over SSH with the cluster deploy key; allow only that one command.
 if [ -n "${CLUSTER_PUBKEY:-}" ]; then
   install -d -m 700 /root/.ssh
