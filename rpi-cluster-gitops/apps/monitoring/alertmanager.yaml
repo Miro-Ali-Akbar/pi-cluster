@@ -14,12 +14,12 @@ data:
       group_by: [alertname, node]
       group_wait: 30s
       group_interval: 5m
-      repeat_interval: 6h
+      repeat_interval: 24h
     receivers:
       - name: home-assistant
         webhook_configs:
           - url_file: /etc/alertmanager-secret/url
-            send_resolved: true
+            send_resolved: false
             http_config:
               tls_config:
                 # HA serves HTTPS with a certificate for home.miro.zip; the
@@ -41,7 +41,7 @@ spec:
       labels:
         app: alertmanager
       annotations:
-        config-revision: "1"
+        config-revision: "2"
     spec:
       nodeSelector:
         kubernetes.io/hostname: phone-1

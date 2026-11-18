@@ -147,7 +147,7 @@ data:
             annotations:
               summary: "{{ $value }} SeaweedFS volumes have fewer than 2 copies"
           - alert: SeaweedFSDiskIOError
-            expr: increase(SeaweedFS_volumeServer_storage_io_error_total[1h]) > 0
+            expr: increase(SeaweedFS_volumeServer_storage_io_error_total[15m]) > 5
             annotations:
               summary: "SeaweedFS {{ $labels.pod }} reported disk I/O errors"
           - alert: SeaweedFSDiskFilling
@@ -247,11 +247,17 @@ data:
               summary: "{{ $labels.namespace }}/{{ $labels.pod }} ({{ $labels.container }}) was killed for running out of memory"
           - alert: JobFailed
             expr: >
-              kube_job_failed{condition="true"} == 1
+              kube_job_failed{condition="true", namespace!="mount-watchdog"} == 1
               and on (namespace, job_name) (time() - kube_job_status_start_time) < 86400
             for: 1m
             annotations:
               summary: "Job {{ $labels.namespace }}/{{ $labels.job_name }} failed in the last 24 hours"
+          # The watchdog runs every 5 minutes and heals itself: one timed-out run is not worth a message.
+          - alert: MountWatchdogStale
+            expr: time() - kube_cronjob_status_last_successful_time{cronjob="mount-watchdog"} > 1800
+            for: 5m
+            annotations:
+              summary: "The mount watchdog has not succeeded for 30 minutes"
           - alert: ProbeFailed
             expr: probe_success == 0
             for: 5m
