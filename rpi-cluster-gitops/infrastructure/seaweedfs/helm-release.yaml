@@ -29,13 +29,13 @@ spec:
     master:
       replicas: 1
       nodeSelector: |
-        kubernetes.io/hostname: pi3-1
+        kubernetes.io/hostname: pi4
       data:
         type: hostPath
-        hostPathPrefix: /mnt/longhorn-disk1/seaweedfs-master
+        hostPathPrefix: /mnt/longhorn-disk3/seaweedfs-master
       logs:
         type: hostPath
-        hostPathPrefix: /mnt/longhorn-disk1/seaweedfs-master
+        hostPathPrefix: /mnt/longhorn-disk3/seaweedfs-master
       resources:
         requests:
           cpu: 50m
@@ -114,7 +114,7 @@ spec:
         replicas: 1
         rack: pi3-1-disk1
         nodeSelector: |
-          kubernetes.io/hostname: pi3-1
+          kubernetes.io/hostname: pi4
         initContainers: |
           - name: verify-real-disk
             image: busybox
@@ -125,7 +125,7 @@ spec:
         dataDirs:
           - name: data1
             type: hostPath
-            hostPathPrefix: /mnt/longhorn-disk1
+            hostPathPrefix: /mnt/longhorn-disk3
             maxVolumes: 0
         resources:
           requests:
@@ -183,7 +183,7 @@ spec:
         replicas: 1
         rack: pi4-disk2
         nodeSelector: |
-          kubernetes.io/hostname: pi4
+          kubernetes.io/hostname: pi3-1
         initContainers: |
           - name: verify-real-disk
             image: busybox
@@ -206,7 +206,7 @@ spec:
         replicas: 1
         rack: pi3-1-wd
         nodeSelector: |
-          kubernetes.io/hostname: pi3-1
+          kubernetes.io/hostname: pi4
         initContainers: |
           - name: verify-real-disk
             image: busybox
@@ -225,3 +225,27 @@ spec:
             memory: 64Mi
           limits:
             memory: 160Mi
+
+      pi3-1-hdd:
+        replicas: 1
+        rack: pi3-1-hdd
+        nodeSelector: |
+          kubernetes.io/hostname: pi3-1
+        initContainers: |
+          - name: verify-real-disk
+            image: busybox
+            command: ["sh", "-c", "test -f /data1/.real-disk-marker || (echo 'FATAL: /data1 has no .real-disk-marker - the physical disk is likely disconnected and this would silently fall back to writing on the SD card. Refusing to start.' >&2 && exit 1)"]
+            volumeMounts:
+              - name: data1
+                mountPath: /data1
+        dataDirs:
+          - name: data1
+            type: hostPath
+            hostPathPrefix: /mnt/bulk-storage
+            maxVolumes: 0
+        resources:
+          requests:
+            cpu: 50m
+            memory: 64Mi
+          limits:
+            memory: 256Mi

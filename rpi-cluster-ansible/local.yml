@@ -364,11 +364,11 @@
             state: started
             daemon_reload: "{{ bt_proxy_firewall_unit.changed }}"
 
-    # --- pi3-1 and pi3-2: SeaweedFS metadata that phone-1 pulls into /var/backups/cluster ---
-    # pi3-1 holds the master, pi3-2 the filer. phone-1's key may run only this
+    # --- pi3-1, pi3-2 and pi4: SeaweedFS metadata that phone-1 pulls into /var/backups/cluster ---
+    # pi4 holds the master (its disk is /mnt/longhorn-disk3 there). phone-1's key may run only this
     # export script, which streams a tar.gz to stdout.
     - name: Allow phone-1 to pull a backup archive
-      when: ansible_hostname in ['pi3-1', 'pi3-2']
+      when: ansible_hostname in ['pi3-1', 'pi3-2', 'pi4']
       block:
         - name: Install the backup export script
           ansible.builtin.copy:
@@ -382,7 +382,9 @@
               tmp=$(mktemp -d -p /var/tmp)
               trap 'rm -rf "$tmp"' EXIT
               for d in seaweedfs-master seaweedfs-filer; do
-                [ -d "/mnt/longhorn-disk1/$d" ] && cp -a "/mnt/longhorn-disk1/$d" "$tmp/"
+                for m in /mnt/longhorn-disk1 /mnt/longhorn-disk3; do
+                  [ -d "$m/$d" ] && cp -a "$m/$d" "$tmp/"
+                done
               done
               tar -C "$tmp" -czf - .
 

@@ -1,6 +1,6 @@
 #!/bin/bash
 # Archive the K3s datastore, TLS keys and token (this node is the K3s server) and the SeaweedFS filer
-# metadata (the filer runs here), pull the SeaweedFS master metadata from pi3-1, and push the first
+# metadata (the filer runs here), pull the SeaweedFS master metadata from pi4, and push the first
 # archive to pi4 as the standby copy.
 # Keeps the newest 28 of each.
 set -u
@@ -29,7 +29,7 @@ fi
 prune "$dest/$name"
 
 # SeaweedFS master metadata from the Pi that holds it
-for host in pi3-1:192.168.0.104; do
+for host in pi4:192.168.0.174; do
   name=${host%%:*}; ip=${host##*:}
   mkdir -p "$dest/$name"
   out="$dest/$name/$(date +%Y%m%d-%H%M%S).tar.gz"
