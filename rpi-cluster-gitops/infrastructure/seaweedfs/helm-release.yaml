@@ -132,29 +132,6 @@ spec:
             memory: 64Mi
           limits:
             memory: 256Mi
-      pi3-2-disk1:
-        replicas: 0
-        rack: pi3-2-disk1
-        nodeSelector: |
-          kubernetes.io/hostname: pi3-2
-        initContainers: |
-          - name: verify-real-disk
-            image: busybox
-            command: ["sh", "-c", "test -f /data1/.real-disk-marker || (echo 'FATAL: /data1 has no .real-disk-marker - the physical disk is likely disconnected and this would silently fall back to writing on the SD card. Refusing to start.' >&2 && exit 1)"]
-            volumeMounts:
-              - name: data1
-                mountPath: /data1
-        dataDirs:
-          - name: data1
-            type: hostPath
-            hostPathPrefix: /mnt/longhorn-disk1
-            maxVolumes: 0
-        resources:
-          requests:
-            cpu: 50m
-            memory: 64Mi
-          limits:
-            memory: 256Mi
       pi4-disk1:
         replicas: 1
         rack: pi4-disk1
