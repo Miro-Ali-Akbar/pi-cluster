@@ -397,6 +397,14 @@
             name: smartmontools
             state: present
 
+        # Only smartctl is used (smart-metrics). The smartd daemon finds no SMART disks
+        # behind the USB adapters and exits with status 17, so keep it off.
+        - name: Keep the smartd daemon off
+          ansible.builtin.systemd:
+            name: smartmontools
+            enabled: false
+            state: stopped
+
         - name: Install the SMART metrics script
           ansible.builtin.copy:
             dest: /usr/local/sbin/smart-metrics

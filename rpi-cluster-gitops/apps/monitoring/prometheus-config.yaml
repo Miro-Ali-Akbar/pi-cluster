@@ -238,15 +238,6 @@ data:
             for: 5m
             annotations:
               summary: "phone-1 battery above 45 C"
-          - alert: ContainerNearMemoryLimit
-            expr: >
-              max by (namespace, pod, container, node) (container_memory_working_set_bytes)
-              / on (namespace, pod, container, node)
-              max by (namespace, pod, container, node) (container_spec_memory_limit_bytes > 0)
-              > 0.9
-            for: 15m
-            annotations:
-              summary: "{{ $labels.namespace }}/{{ $labels.pod }} ({{ $labels.container }}) is at {{ $value | humanizePercentage }} of its memory limit and will be OOM-killed"
           - alert: ContainerOOMKilled
             expr: >
               increase(kube_pod_container_status_restarts_total[30m]) > 0
