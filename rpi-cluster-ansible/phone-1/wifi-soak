@@ -1,5 +1,5 @@
 #!/bin/bash
-# One CSV line per minute: Wi-Fi signal/bitrate, loss and latency to the control plane, driver error count.
+# One CSV line per minute: Wi-Fi signal/bitrate, loss and latency to pi4, driver error count.
 OUT=/var/log/wifi-soak.csv
 [ -s "$OUT" ] || echo "time,signal_dbm,tx_bitrate,loss_pct,rtt_avg_ms,rtt_max_ms,ath10k_errors,reconnects" > "$OUT"
 while true; do

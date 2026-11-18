@@ -5,7 +5,7 @@ metadata:
   namespace: home-assistant
 spec:
   # ClusterIP, not LoadBalancer: the pod runs with hostNetwork now (for
-  # mDNS discovery) and already binds 8123 directly on pi4's LAN IP, which
+  # mDNS discovery) and already binds 8123 directly on phone-1's LAN IP, which
   # would collide with ServiceLB's own hostNetwork proxy pod on the same
   # node/port. External access is unchanged - same node IP:8123 either way.
   type: ClusterIP

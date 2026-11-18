@@ -43,8 +43,8 @@ spec:
             limits:
               memory: 1280Mi
           # No host devices needed: Zigbee (ZHA) reaches the dongle through
-          # ser2net on pi3-1, Matter and Thread are network services on
-          # pi3-1, and Bluetooth comes from the bt-proxy pod (ESPHome native
+          # ser2net on pi3-1, Matter (phone-1) and Thread (OTBR on pi4) are
+          # network services, and Bluetooth comes from the bt-proxy pod (ESPHome native
           # API) instead of a local adapter.
           volumeMounts:
             - name: config

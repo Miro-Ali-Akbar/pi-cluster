@@ -1,7 +1,6 @@
-# Master + filer are pinned to pi3-1 rather than pi4: pi4 already carries
-# the k3s control-plane and Home Assistant, so it has less real headroom
-# than its total RAM suggests. Volume servers run once per physical disk -
-# pi4 hosts two SSDs and pi3-1 two, since data has to live where the disk physically is.
+# The master runs on pi4 (its data is on an SSD there), the filer on phone-1.
+# Volume servers run once per physical disk, pinned to the node the disk is
+# plugged into, since data has to live where the disk physically is.
 apiVersion: helm.toolkit.fluxcd.io/v2
 kind: HelmRelease
 metadata:

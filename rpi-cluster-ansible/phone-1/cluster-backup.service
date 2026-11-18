@@ -1,5 +1,5 @@
 [Unit]
-Description=Pull cluster state backups from pi4 and pi3-1
+Description=Archive K3s state, push it to pi4 and pull the SeaweedFS master metadata from pi4
 After=network-online.target
 Wants=network-online.target
 

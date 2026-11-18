@@ -24,7 +24,7 @@ spec:
       # entry point for miro.zip. hostNetwork binds port 80 straight on the
       # node's own IP - no klipper-lb/ingress-controller needed - so
       # the router's port-forward for miro.zip just needs to target this
-      # node (pi3-2, chosen to sit next to web-server).
+      # node (pi3-2).
       hostNetwork: true
       dnsPolicy: ClusterFirstWithHostNet
       nodeSelector:
@@ -56,7 +56,7 @@ spec:
             name: edge-proxy-conf
         # hostPath, not a PVC: certbot (see certbot-issue-job.yaml /
         # certbot-renew-cronjob.yaml) is pinned to this same node so they
-        # can share plain host directories - no need for Longhorn RWX here.
+        # can share plain host directories.
         - name: acme-webroot
           hostPath:
             path: /srv/acme-webroot

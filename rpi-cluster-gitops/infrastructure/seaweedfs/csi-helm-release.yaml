@@ -1,6 +1,6 @@
 # SeaweedFS CSI driver - lets apps consume SeaweedFS storage as ordinary
 # PVCs. Excludes pi3-1 (only 905Mi RAM, already carrying SeaweedFS's
-# master/filer/volume-server plus matter-server/otbr/zigbee-bridge) - the
+# volume servers plus matter-server/otbr/zigbee-bridge) - the
 # CSI node driver and mount-service DaemonSets add real per-node overhead
 # none of the SeaweedFS-consuming apps need a hardware reason to accept.
 #

@@ -34,7 +34,7 @@ spec:
             # In-cluster, so content refreshes do not hairpin through the router.
             - name: SITE_URL
               value: http://web-server.web-server.svc.cluster.local
-            # Same counters as the website: SSH visits count too.
+            # Same counters as the website: SSH visits and claps count too.
             - name: COUNTERS_URL
               value: http://site-counters.site-counters.svc.cluster.local:8080/api
             - name: HOST_KEY_PATH

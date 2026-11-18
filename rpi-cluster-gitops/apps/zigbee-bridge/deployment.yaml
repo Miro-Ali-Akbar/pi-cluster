@@ -1,4 +1,4 @@
-# The Zigbee dongle is plugged into pi3-1, not pi4 (where Home Assistant
+# The Zigbee dongle is plugged into pi3-1, not phone-1 (where Home Assistant
 # runs), so ser2net bridges it over the network instead of hostPath
 # passthrough - same pattern as OTBR for the Thread radio. Exposes the
 # serial device as a plain TCP socket; HA's ZHA integration connects via

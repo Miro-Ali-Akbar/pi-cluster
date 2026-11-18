@@ -58,4 +58,3 @@ runcmd:
   - >
     ansible-pull -U https://github.com/Miro-Ali-Akbar/pi-cluster.git
     -i localhost, rpi-cluster-ansible/local.yml
-    --extra-vars "pi4_local_ip=<PI4_LOCAL_IP>"

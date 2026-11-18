@@ -21,7 +21,7 @@ Flash: `fastboot erase dtbo`, then `fastboot flash boot <image>` to the active s
 - `battery-limiter`: holds the battery at 40-65% by writing `Unknown` to `/sys/class/power_supply/pm8150b-charger/status`; stops charging at 42 C; always charges below 15%.
 - `screen-off`: panel has no power control, so console is black on black and the framebuffer zeroed (`dd if=/dev/fb0 bs=1M | tr -d '\000' | wc -c` is 0 when dark).
 - `power-screen`: power button toggles a status page, off after 120 s. logind ignores the key. `systemctl kill -s USR1 power-screen` toggles it.
-- `cluster-backup.timer` (00, 06, 12, 18 at :10): archives its own K3s datastore, TLS keys and token to `/var/backups/cluster/phone-1/` and pushes that archive to `pi4` (`/root/.ssh/standby-push`); pulls SeaweedFS metadata from `pi3-1` and `pi3-2` (`/root/.ssh/cluster-backup`). Mode 700, 28 kept. Needs `sqlite3`.
+- `cluster-backup.timer` (00, 06, 12, 18 at :10): archives its own K3s datastore, TLS keys and token to `/var/backups/cluster/phone-1/` and pushes that archive to `pi4` (`/root/.ssh/standby-push`); pulls SeaweedFS master metadata from `pi4` (`/root/.ssh/cluster-backup`). Mode 700, 28 kept. Needs `sqlite3`.
 - `phone-metrics.timer` (every minute): battery voltage, current, status, charger enabled and input limit for node-exporter (`/var/lib/node_exporter/phone.prom`). Battery capacity and temperature and the SoC thermal zones come from node-exporter itself. Prometheus keeps 90 days (10 GB cap).
 - `wifi-soak`: per-minute CSV in `/var/log/wifi-soak.csv`.
 - Desktop user services masked (idle draw about 310 mA). `linux-image-6.17.0-sm8150` and `phoc` held; `msm` GPU driver not loaded.
