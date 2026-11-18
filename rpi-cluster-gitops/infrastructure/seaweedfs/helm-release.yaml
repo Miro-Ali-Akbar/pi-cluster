@@ -134,7 +134,7 @@ spec:
           limits:
             memory: 256Mi
       pi3-2-disk1:
-        replicas: 1
+        replicas: 0
         rack: pi3-2-disk1
         nodeSelector: |
           kubernetes.io/hostname: pi3-2
