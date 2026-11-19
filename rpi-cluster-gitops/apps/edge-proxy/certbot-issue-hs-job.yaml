@@ -25,9 +25,9 @@ spec:
             - --preferred-challenges
             - dns
             - --manual-auth-hook
-            - /scripts/auth-hook.py
+            - python3 /scripts/auth-hook.py
             - --manual-cleanup-hook
-            - /scripts/cleanup-hook.py
+            - python3 /scripts/cleanup-hook.py
             - -d
             - hs.miro.zip
             - --email
