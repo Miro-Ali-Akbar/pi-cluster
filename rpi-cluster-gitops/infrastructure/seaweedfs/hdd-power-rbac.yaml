@@ -14,7 +14,7 @@ metadata:
   namespace: seaweedfs
 rules:
   - apiGroups: ["apps"]
-    resources: ["statefulsets", "statefulsets/scale"]
+    resources: ["statefulsets/scale"] # the scale subresource only: it cannot change the pod template
     resourceNames: ["seaweedfs-volume-pi3-1-hdd"]
     verbs: ["get", "patch"]
 ---
