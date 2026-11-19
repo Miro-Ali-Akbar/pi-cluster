@@ -7,3 +7,4 @@ resources:
   - csi-helm-repository.yaml
   - csi-helm-release.yaml
   - s3-credentials.sops.yaml
+  - hdd-power-rbac.yaml

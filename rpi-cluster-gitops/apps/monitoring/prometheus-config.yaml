@@ -142,7 +142,8 @@ data:
             annotations:
               summary: "SeaweedFS {{ $labels.pod }} is down (a disk or its node may have failed)"
           - alert: SeaweedFSUnderReplicated
-            expr: sum(SeaweedFS_master_under_replicated_volumes) > 0
+            # The HDD is switched off on purpose while someone is home (its volume server is scaled to 0).
+            expr: sum(SeaweedFS_master_under_replicated_volumes) > 0 unless on() (kube_statefulset_replicas{statefulset="seaweedfs-volume-pi3-1-hdd"} == 0)
             for: 15m
             annotations:
               summary: "{{ $value }} SeaweedFS volumes have fewer than 2 copies"

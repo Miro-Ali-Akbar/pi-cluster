@@ -1,0 +1,42 @@
+# Lets Home Assistant (presence automation) start and stop only the HDD volume server,
+# so the 2 TB HDD can be powered off while someone is home (it spins audibly).
+# The token Secret is filled in by the cluster; it is not stored in git.
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: hdd-power
+  namespace: seaweedfs
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: hdd-power
+  namespace: seaweedfs
+rules:
+  - apiGroups: ["apps"]
+    resources: ["statefulsets", "statefulsets/scale"]
+    resourceNames: ["seaweedfs-volume-pi3-1-hdd"]
+    verbs: ["get", "patch"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: hdd-power
+  namespace: seaweedfs
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: hdd-power
+subjects:
+  - kind: ServiceAccount
+    name: hdd-power
+    namespace: seaweedfs
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: hdd-power-token
+  namespace: seaweedfs
+  annotations:
+    kubernetes.io/service-account.name: hdd-power
+type: kubernetes.io/service-account-token
