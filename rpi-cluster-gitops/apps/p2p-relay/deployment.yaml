@@ -1,0 +1,58 @@
+# libp2p circuit relay v2 for the p2p app (source: github.com/hitsuindaface/p2p-app, relay-server/).
+# Stateless: it generates its key at start and clients learn its PeerId on connect.
+# Same node as website-ssh/edge-proxy so the router forwards every public port to pi3-2:
+# external TCP 47802 -> pi3-2:47802. hostPort keeps the real client source addresses (no SNAT),
+# which the relay reports to peers for hole punching.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: p2p-relay
+  namespace: p2p-relay
+spec:
+  replicas: 1
+  strategy:
+    type: Recreate # hostPort 47802 can only be bound by one pod
+  selector:
+    matchLabels:
+      app: p2p-relay
+  template:
+    metadata:
+      labels:
+        app: p2p-relay
+    spec:
+      nodeSelector:
+        kubernetes.io/hostname: pi3-2
+      automountServiceAccountToken: false
+      enableServiceLinks: false
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 65534
+        runAsGroup: 65534
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: relay
+          image: ghcr.io/hitsuindaface/p2p-relay-server:latest@sha256:970274007bcf7d99f199dd9af567bb478b896be67aae20ead3f48dc87ec1adb4
+          args: ["/dns4/p2p.miro.zip/tcp/47802", "47802"] # public multiaddr first (required), then the port
+          ports:
+            - containerPort: 47802
+              hostPort: 47802
+          readinessProbe:
+            tcpSocket:
+              port: 47802
+          livenessProbe:
+            tcpSocket:
+              port: 47802
+            initialDelaySeconds: 20
+            periodSeconds: 30
+          resources:
+            requests:
+              cpu: 25m
+              memory: 16Mi
+            limits:
+              memory: 64Mi
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: [ALL]

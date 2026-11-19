@@ -13,3 +13,4 @@ resources:
   - monitoring
   - mqtt
   - website-ssh
+  - p2p-relay
