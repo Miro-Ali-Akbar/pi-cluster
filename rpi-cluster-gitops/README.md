@@ -14,9 +14,9 @@ The Flux controllers run on `phone-1` (`clusters/my-cluster/flux-system/on-phone
 
 ## Scheduling
 
-- Hardware-tied apps select `kubernetes.io/hostname: <node>` (`zigbee-bridge` on `pi3-1`; `otbr`, `bt-proxy` on `pi4`).
+- Hardware-tied apps select `kubernetes.io/hostname: <node>` (`zigbee-bridge` on `pi3-1`; `otbr` on `pi3-2`, where the Thread dongle sits away from pi4's USB 3 disks, whose 2.4 GHz noise blocked the radio; `bt-proxy` on `pi4`).
 - `phone-1` is tainted `node-type=phone:NoSchedule`. Apps there select it and tolerate the taint: Home Assistant, matter-server, Flux, monitoring, web-server, coredns-phone, the certbot and backup jobs.
-- Home Assistant uses hostPaths on `phone-1` (`/var/lib/home-assistant/config`, `/etc/letsencrypt`), runs with `hostNetwork`, and reaches Zigbee (ser2net on `pi3-1`, port 6638), Matter (matter-server on `phone-1`, port 5580; it reaches the Thread devices through OTBR on `pi4`, and has no Bluetooth, so new devices cannot be commissioned over BLE from it) and Bluetooth (bt-proxy on `pi4`, port 6053) over the network.
+- Home Assistant uses hostPaths on `phone-1` (`/var/lib/home-assistant/config`, `/etc/letsencrypt`), runs with `hostNetwork`, and reaches Zigbee (ser2net on `pi3-1`, port 6638), Matter (matter-server on `phone-1`, port 5580; it reaches the Thread devices through OTBR on `pi3-2` (which needs `net.ipv6.conf.all.forwarding=1`, set by `local.yml`), and has no Bluetooth, so new devices cannot be commissioned over BLE from it) and Bluetooth (bt-proxy on `pi4`, port 6053) over the network.
 - `bt-proxy`'s API is unauthenticated: `pi4` drops port 6053 from all but `phone-1` (`bt-proxy-firewall.service`, from `local.yml`).
 
 ## Storage
@@ -45,6 +45,7 @@ Alternative to step 2: restore the K3s datastore from `/var/backups/cluster/phon
   ```
   SOPS_AGE_KEY_FILE=secrets/age.key sops --decrypt --input-type yaml --output-type binary rpi-cluster-ansible/wireguard/pi4-wg0.sops.yaml | ssh master@192.168.0.174 'sudo install -m 600 /dev/stdin /etc/wireguard/wg0.conf && sudo systemctl enable --now wg-quick@wg0'
   ```
+- **pi3-1: the 2 TB HDD is switched off while someone is home** (it is audible). Its `/etc/fstab` line carries `x-systemd.automount,x-systemd.device-timeout=30s`, so it mounts by itself when its power returns. Home Assistant drives it with a restricted token (`hdd-power`, can only scale `seaweedfs-volume-pi3-1-hdd`): the automation `Harddrive off while home` (home 15 min) scales the volume server to 0, waits 3 min, then switches `switch.harddrive` (a Matter plug) off; `On leave` (away 15 min) switches it on, waits 45 s and scales to 1. Its volumes have one copy meanwhile, and the replication alert is silenced while the StatefulSet is at 0. A Helm upgrade of the SeaweedFS release resets replicas to 1.
 - **pi4: DuckDNS updater** (`duckdns-update.timer`).
 - **pi4 and pi3-1: `/usr/local/sbin/cluster-backup-export`** and the phone's restricted root key, installed by `local.yml`.
 - **All Pis: `smart-metrics.timer`** writes SMART health of the USB disks for node-exporter (`/var/lib/node_exporter`), installed by `local.yml`. `local.yml` never partitions or formats a disk that already holds a filesystem.
