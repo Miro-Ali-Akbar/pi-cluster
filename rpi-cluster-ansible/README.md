@@ -8,13 +8,14 @@ installs and that re-runs on every boot. The phone is set up by `phone-1/` inste
 
 - Appends the K3s cgroup flags to `cmdline.txt` and reboots at most once per boot
   generation (sentinel-file guarded).
-- **Control plane** (`node_role: control-plane`, `pi4`): formats and mounts the SSD (matched by `/dev/disk/by-id/ata-*`, never `/dev/sdX`) and receives the K3s standby archive from `phone-1`. `phone-1` (the K3s server) is set up by `phone-1/provision.sh`, not by this playbook.
+- **Control plane** (`node_role: control-plane`, `pi4`): receives the K3s standby archive from `phone-1`. The SeaweedFS disks are mounted by hand-kept `/etc/fstab` lines (by-id, `nofail`); the playbook never partitions or formats a disk that already holds a filesystem. `phone-1` (the K3s server) is set up by `phone-1/provision.sh`, not by this playbook.
 - **Worker** (`node_role: worker`): formats and mounts a USB HDD if one is attached (matched by
   `/dev/disk/by-id/usb-*`).
 - **pi4:** `bt-proxy-firewall.service` allows only `phone-1` to reach port 6053.
 - **Every Pi:** joins K3s as an agent of `k3s_server_ip` (pinned `k3s_version`), once, and installs the SMART metrics timer.
 - **pi4:** installs `cluster-backup-export` and authorizes `phone-1`'s key for root, restricted to that one command (it streams a tar.gz of the SeaweedFS master metadata).
 - **Every Pi:** installs `seaweedfs-stale-mounts.timer`, which lazily unmounts dead SeaweedFS FUSE mounts.
+- **pi3-2:** enables IPv6 forwarding (`/etc/sysctl.d/90-otbr-forwarding.conf`): the Thread border router running there routes between the LAN and the Thread mesh.
 - **pi4:** installs `cluster-standby-receive` and authorizes `phone-1`'s push key, restricted to it.
 - Hardware-specific tasks are gated on `ansible_hostname`, not role: the dongles are plugged
   into specific nodes.

@@ -9,12 +9,38 @@ metadata:
   namespace: monitoring
 data:
   alertmanager.yml: |
+    # One notification lists everything firing. Only the urgent ones (a node down, a site down,
+    # the phone battery, an expiring certificate) may wake you: the rest is held 23:00-07:30.
     route:
       receiver: home-assistant
-      group_by: [alertname, node]
-      group_wait: 30s
-      group_interval: 5m
-      repeat_interval: 24h
+      group_by: []
+      group_wait: 2m
+      group_interval: 30m
+      repeat_interval: 48h
+      routes:
+        - matchers:
+            - alertname=~"NodeNotReady|ProbeFailed|PhoneBatteryLow|PhoneBatteryHot|CertExpiringSoon"
+          group_by: [alertname]
+          group_wait: 1m
+          repeat_interval: 24h
+        - matchers:
+            - alertname=~".+"
+          mute_time_intervals: [night]
+    # A node that is down explains most of what else is firing.
+    inhibit_rules:
+      - source_matchers:
+          - alertname="NodeNotReady"
+        target_matchers:
+          - alertname=~"DeploymentUnavailable|ScrapeTargetDown|SeaweedFSDown|SeaweedFSUnderReplicated|SeaweedFSDiskIOError|PodCrashLooping|UnitFailed|NodeMemoryLow"
+    time_intervals:
+      - name: night
+        time_intervals:
+          - times:
+              - start_time: "23:00"
+                end_time: "24:00"
+              - start_time: "00:00"
+                end_time: "07:30"
+            location: Europe/Stockholm
     receivers:
       - name: home-assistant
         webhook_configs:
@@ -41,7 +67,7 @@ spec:
       labels:
         app: alertmanager
       annotations:
-        config-revision: "2"
+        config-revision: "3"
     spec:
       nodeSelector:
         kubernetes.io/hostname: phone-1

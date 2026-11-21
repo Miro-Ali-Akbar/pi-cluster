@@ -133,22 +133,23 @@ data:
         rules:
           - alert: ScrapeTargetDown
             expr: up == 0
-            for: 3m
+            for: 10m
             annotations:
               summary: "{{ $labels.job }} target {{ $labels.instance }} is down"
           - alert: SeaweedFSDown
             expr: up{job="seaweedfs"} == 0
-            for: 3m
+            for: 10m
             annotations:
               summary: "SeaweedFS {{ $labels.pod }} is down (a disk or its node may have failed)"
           - alert: SeaweedFSUnderReplicated
             # The HDD is switched off on purpose while someone is home (its volume server is scaled to 0).
             expr: sum(SeaweedFS_master_under_replicated_volumes) > 0 unless on() (kube_statefulset_replicas{statefulset="seaweedfs-volume-pi3-1-hdd"} == 0)
-            for: 15m
+            for: 3h
             annotations:
               summary: "{{ $value }} SeaweedFS volumes have fewer than 2 copies"
           - alert: SeaweedFSDiskIOError
             expr: increase(SeaweedFS_volumeServer_storage_io_error_total[15m]) > 5
+            for: 10m
             annotations:
               summary: "SeaweedFS {{ $labels.pod }} reported disk I/O errors"
           - alert: SeaweedFSDiskFilling
@@ -167,10 +168,6 @@ data:
             expr: smart_pending_sectors > 0 or increase(smart_reallocated_sectors[7d]) > 0
             annotations:
               summary: "{{ $labels.node }} {{ $labels.device }} ({{ $labels.model }}) has bad or growing reallocated sectors"
-          - alert: UsbDisconnect
-            expr: increase(usb_disconnects_total[15m]) > 0
-            annotations:
-              summary: "{{ $labels.node }}: a USB device disconnected (a hub or power drop; check its disks and the Thread/Zigbee dongle)"
           - alert: DiskHot
             expr: smart_temperature_celsius > 60
             for: 15m
@@ -178,7 +175,7 @@ data:
               summary: "{{ $labels.node }} {{ $labels.device }} is at {{ $value }} C"
           - alert: UnitFailed
             expr: unit_failed == 1
-            for: 15m
+            for: 30m
             annotations:
               summary: "{{ $labels.node }}: {{ $labels.unit }} is in a failed state (check journalctl -u {{ $labels.unit }})"
           - alert: BackupStale
@@ -204,7 +201,7 @@ data:
               summary: "Could not read the TLS certificate served for {{ $labels.target }}"
           - alert: NodeNotReady
             expr: kube_node_status_condition{condition="Ready",status="true"} == 0
-            for: 3m
+            for: 5m
             annotations:
               summary: "Node {{ $labels.node }} is not Ready"
           - alert: NodeMemoryLow
@@ -221,12 +218,12 @@ data:
               summary: "{{ $labels.node }} {{ $labels.mountpoint }} has under 10% free"
           - alert: PodCrashLooping
             expr: increase(kube_pod_container_status_restarts_total[30m]) > 3
-            for: 5m
+            for: 15m
             annotations:
               summary: "{{ $labels.namespace }}/{{ $labels.pod }} restarted {{ $value | printf \"%.0f\" }} times in 30 min"
           - alert: DeploymentUnavailable
             expr: kube_deployment_status_replicas_available < kube_deployment_spec_replicas
-            for: 10m
+            for: 20m
             annotations:
               summary: "{{ $labels.namespace }}/{{ $labels.deployment }} has fewer ready replicas than desired"
           - alert: PhoneBatteryLow
@@ -261,6 +258,6 @@ data:
               summary: "The mount watchdog has not succeeded for 30 minutes"
           - alert: ProbeFailed
             expr: probe_success == 0
-            for: 5m
+            for: 10m
             annotations:
               summary: "{{ $labels.instance }} is not answering ({{ $labels.job }})"
