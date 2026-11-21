@@ -11,6 +11,13 @@ systemctl enable --now chrony
 timedatectl set-timezone Europe/Stockholm
 systemctl set-default multi-user.target
 echo "kernel.printk = 3 4 1 3" > /etc/sysctl.d/10-console-loglevel.conf
+# The boot command line (added by the bootloader) has a bare "debug", which puts systemd at debug
+# level: about 2,700 journal lines a minute, 4 GB in a few weeks. Lower it after boot, cap the journal.
+mkdir -p /etc/systemd/journald.conf.d
+printf '[Journal]\nSystemMaxUse=500M\nMaxRetentionSec=14day\n' > /etc/systemd/journald.conf.d/10-limit.conf
+printf '[Unit]\nDescription=Lower systemd from debug to info logging\nAfter=systemd-journald.service\n\n[Service]\nType=oneshot\nExecStart=/usr/bin/systemd-analyze log-level info\n\n[Install]\nWantedBy=multi-user.target\n' > /etc/systemd/system/loglevel-info.service
+systemctl daemon-reload
+systemctl enable --now loglevel-info.service
 
 # SSH: key only
 mkdir -p /etc/ssh/sshd_config.d
