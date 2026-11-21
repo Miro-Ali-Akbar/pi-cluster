@@ -34,7 +34,7 @@ Alternative to step 2: restore the K3s datastore from `/var/backups/cluster/phon
 
 ## Host-level config (not managed by Flux, lost on reflash)
 
-- **pi4: K3s container storage is on the SD card.** It used to be bind-mounted from the SanDisk SSD, and every USB drop of that SSD took the whole node down; now a drop only stops one volume server. The old standby database and containerd copies on the SSD are gone from `/etc/fstab`.
+- **pi4: K3s container storage is on the SD card.** It used to be bind-mounted from the SanDisk SSD, and every USB drop of that SSD took the whole node down; now a drop only stops one volume server. The old copies on the SSD, and their `/etc/fstab` binds, are gone.
 - **pi4: USB.** `/boot/firmware/cmdline.txt` has `usb-storage.quirks=7825:a2a4:u,0bda:9210:u` (no UAS for the SSD adapters: a UAS reset crashed the xHCI controller under load). Plug disks straight into pi4's ports; a 3-SSD USB hub reset every time load started and dropped the disks.
 - **pi4: WireGuard** (`wg0`, 10.200.0.1/29, UDP 51820 forwarded by the router) is the only remote path into the cluster, and masquerades the VPN subnet onto the LAN. A peer whose allowed IPs include `192.168.0.0/24` reaches every node: the workstation's NetworkManager connection `nas` (10.200.0.2, keepalive 25, metric 700) does. The server config is SOPS-encrypted in `rpi-cluster-ansible/wireguard/pi4-wg0.sops.yaml`. Restore:
   ```
