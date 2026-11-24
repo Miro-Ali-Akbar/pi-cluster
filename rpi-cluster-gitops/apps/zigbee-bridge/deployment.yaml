@@ -33,7 +33,11 @@ spec:
             - |
               set -e
               # Retry: the pod must start even if the network is not up yet after a reboot.
-              until apk add --no-cache ser2net; do sleep 5; done
+              until apk add --no-cache ser2net iptables; do sleep 5; done
+              # The port has no authentication and kickolduser lets any client replace the current one,
+              # so only Home Assistant (phone-1) may connect. hostNetwork: these are the host's rules.
+              iptables -C INPUT -p tcp --dport 6638 -s 192.168.0.179 -j ACCEPT 2>/dev/null || iptables -I INPUT 1 -p tcp --dport 6638 -s 192.168.0.179 -j ACCEPT
+              iptables -C INPUT -p tcp --dport 6638 -j DROP 2>/dev/null || iptables -A INPUT -p tcp --dport 6638 -j DROP
               # Alpine 3.20 ships ser2net 3.5.1, which uses the classic plain-text
               # ser2net.conf format (port:state:timeout:device:serial-params) -
               # NOT the YAML config format added in ser2net 4.x.
