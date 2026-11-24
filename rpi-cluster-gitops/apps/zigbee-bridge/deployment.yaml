@@ -38,6 +38,8 @@ spec:
               # so only Home Assistant (phone-1) may connect. hostNetwork: these are the host's rules.
               iptables -C INPUT -p tcp --dport 6638 -s 192.168.0.179 -j ACCEPT 2>/dev/null || iptables -I INPUT 1 -p tcp --dport 6638 -s 192.168.0.179 -j ACCEPT
               iptables -C INPUT -p tcp --dport 6638 -j DROP 2>/dev/null || iptables -A INPUT -p tcp --dport 6638 -j DROP
+              # ser2net listens on IPv6 too; Home Assistant uses IPv4, so drop every IPv6 client.
+              ip6tables -C INPUT -p tcp --dport 6638 -j DROP 2>/dev/null || ip6tables -A INPUT -p tcp --dport 6638 -j DROP
               # Alpine 3.20 ships ser2net 3.5.1, which uses the classic plain-text
               # ser2net.conf format (port:state:timeout:device:serial-params) -
               # NOT the YAML config format added in ser2net 4.x.
