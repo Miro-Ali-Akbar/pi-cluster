@@ -52,6 +52,12 @@ data:
         return tuple((c["size"], c.get("e_tag")) for c in (e.get("chunks") or []))
 
 
+    def slim(e):  # keep only what is compared later; whole entries made the job run out of memory
+        r = {k: e.get(k) for k in ("FullPath", "FileSize", "Mtime", "Uid", "Gid", "Mode", "HardLinkId")}
+        r["chunks"] = [{"size": c["size"], "e_tag": c.get("e_tag")} for c in e["chunks"]]
+        return r
+
+
     def mtime_ns(s):
         whole, _, frac = s.rstrip("Z").partition(".")
         sec = datetime.datetime.fromisoformat(whole).replace(tzinfo=datetime.timezone.utc).timestamp()
@@ -73,7 +79,7 @@ data:
                     elif (e["FileSize"] >= MIN_SIZE and e["FullPath"].rsplit("/", 1)[1] not in SKIP
                           and not e.get("Content") and e.get("chunks")
                           and ts(e["Mtime"]) < now - MIN_AGE and ts(e["Crtime"]) < now - MIN_AGE):
-                        records.append(e)
+                        records.append(slim(e))
             level = nxt
 
     groups = {}
