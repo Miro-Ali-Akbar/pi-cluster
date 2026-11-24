@@ -5,8 +5,8 @@ K3s on three Raspberry Pis and one phone: home automation and Zigbee/Matter/Thre
 | Node | Hardware | RAM | Runs |
 | --- | --- | --- | --- |
 | `pi4` 192.168.0.174 | Pi 4, 3 USB SSDs (SanDisk, ADATA, WDC) | 2 GB | K3s agent (container storage on the SD card), SeaweedFS master, three volume servers and S3, NAS (Samba), bt-proxy; host: WireGuard, DuckDNS updater, K3s standby archive |
-| `pi3-1` 192.168.0.104 | Pi 3, SD, USB 240 GB SSD and 2 TB HDD | 1 GB | two SeaweedFS volume servers (the HDD is switched off while someone is home), Zigbee bridge (Zigbee dongle here) |
-| `pi3-2` 192.168.0.176 | Pi 3+, SD | 1 GB | edge proxy (80/443 forwarded here), website-ssh (22 forwarded), p2p relay (TCP 47802 forwarded), OTBR (Thread dongle here), site-counters |
+| `pi3-1` 192.168.0.104 | Pi 3, SD, USB 240 GB SSD and 2 TB HDD | 1 GB | two SeaweedFS volume servers (the HDD is powered on only while it has volumes to replicate), Zigbee bridge and OTBR (both dongles here) |
+| `pi3-2` 192.168.0.176 | Pi 3+, SD | 1 GB | edge proxy (80/443 forwarded here), website-ssh (22 forwarded), p2p relay (TCP 47802 forwarded), site-counters |
 | `phone-1` 192.168.0.179 | OnePlus 7 Pro, Wi-Fi, 224 GB | 8 GB | K3s server, Home Assistant, Matter server, MQTT broker (Mosquitto, port 1883), SeaweedFS filer, Flux, Prometheus, Alertmanager, web server, CoreDNS replica |
 
 The Pis are memory-tight; put new workloads on `phone-1` (tainted `node-type=phone:NoSchedule`).
