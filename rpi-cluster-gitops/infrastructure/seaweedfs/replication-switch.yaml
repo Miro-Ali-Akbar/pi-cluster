@@ -15,7 +15,7 @@ data:
     HDD=seaweedfs-volume-pi3-1-hdd
     shell() { weed shell -master=$M -filer=$F; }
     T=$(cat /var/run/secrets/kubernetes.io/serviceaccount/token)
-    WANT=$(curl -sk -H "Authorization: Bearer $T" "https://kubernetes.default.svc/apis/apps/v1/namespaces/seaweedfs/statefulsets/$HDD/scale" | grep -o '"replicas": *[0-9]*' | head -1 | tr -dc 0-9)
+    WANT=$(curl -s --cacert /var/run/secrets/kubernetes.io/serviceaccount/ca.crt -H "Authorization: Bearer $T" "https://kubernetes.default.svc/apis/apps/v1/namespaces/seaweedfs/statefulsets/$HDD/scale" | grep -o '"replicas": *[0-9]*' | head -1 | tr -dc 0-9)
     [ -n "$WANT" ] || { echo "cannot read replicas"; exit 1; }
     LIST=$(echo volume.list | shell 2>&1)
     DST=$(echo "$LIST" | awk -v h="DataNode $HDD" 'index($0,h){print $2; exit}')
