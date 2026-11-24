@@ -1,0 +1,75 @@
+# While the 2 TB HDD is off (its volume server is scaled to 0) new data is written with one copy,
+# so the SSDs do not fill up with a second copy. When the HDD volume server is back, the filer rule
+# returns to 2 copies, single-copy volumes are set to 2 copies and every missing copy is made on the
+# HDD (never on the SSDs). Runs often and does at most 20 copies per run.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: replication-switch
+  namespace: seaweedfs
+data:
+  run.sh: |
+    #!/bin/sh
+    M=seaweedfs-master-0.seaweedfs-master.seaweedfs:9333
+    F=seaweedfs-filer.seaweedfs:8888
+    HDD=seaweedfs-volume-pi3-1-hdd
+    shell() { weed shell -master=$M -filer=$F; }
+    T=$(cat /var/run/secrets/kubernetes.io/serviceaccount/token)
+    WANT=$(curl -sk -H "Authorization: Bearer $T" "https://kubernetes.default.svc/apis/apps/v1/namespaces/seaweedfs/statefulsets/$HDD/scale" | grep -o '"replicas":[0-9]*' | head -1 | cut -d: -f2)
+    [ -n "$WANT" ] || { echo "cannot read replicas"; exit 1; }
+    LIST=$(echo volume.list | shell 2>&1)
+    DST=$(echo "$LIST" | awk -v h="DataNode $HDD" 'index($0,h){print $2; exit}')
+    if [ "$WANT" = 0 ]; then
+      echo "HDD off: new data gets 1 copy"
+      printf 'fs.configure -locationPrefix=/ -replication=000 -apply\n' | shell
+      exit 0
+    fi
+    [ -n "$DST" ] || { echo "HDD volume server not registered yet"; exit 0; }
+    echo "HDD on: new data gets 2 copies, healing onto $DST"
+    printf 'fs.configure -locationPrefix=/ -replication=010 -apply\n' | shell
+    {
+      echo lock
+      echo "$LIST" | awk '/DataNode /{n=$2} /volume Id:/ && /ReplicaPlacement:000/ {i=$2; gsub(/Id:|,/,"",i); print i, n}' | head -20 | while read -r id src; do
+        echo "volume.configure.replication -volumeId $id -replication 010"
+        [ "$src" = "$DST" ] || echo "volume.copy -source $src -target $DST -volumeId $id"
+      done
+      printf 'lock\nvolume.fix.replication\nunlock\n' | shell 2>&1 | grep "^replicating" | grep "to dataNode $HDD" | awk '{print "volume.copy -source " $6 " -target " $9 " -volumeId " $3}' | head -20
+      echo unlock
+    } > /tmp/cmds.txt
+    shell < /tmp/cmds.txt
+---
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: replication-switch
+  namespace: seaweedfs
+spec:
+  schedule: "*/10 * * * *"
+  concurrencyPolicy: Forbid
+  successfulJobsHistoryLimit: 1
+  failedJobsHistoryLimit: 1
+  jobTemplate:
+    spec:
+      activeDeadlineSeconds: 3000
+      backoffLimit: 0
+      template:
+        spec:
+          restartPolicy: Never
+          serviceAccountName: hdd-power # may read the HDD StatefulSet scale (see hdd-power-rbac.yaml)
+          containers:
+            - name: switch
+              image: chrislusf/seaweedfs:4.48
+              command: ["sh", "/scripts/run.sh"]
+              volumeMounts:
+                - name: scripts
+                  mountPath: /scripts
+              resources:
+                requests:
+                  cpu: 20m
+                  memory: 64Mi
+                limits:
+                  memory: 192Mi
+          volumes:
+            - name: scripts
+              configMap:
+                name: replication-switch

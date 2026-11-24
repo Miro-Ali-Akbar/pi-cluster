@@ -8,3 +8,4 @@ resources:
   - csi-helm-release.yaml
   - s3-credentials.sops.yaml
   - hdd-power-rbac.yaml
+  - replication-switch.yaml
