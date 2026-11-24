@@ -1,7 +1,14 @@
-# While the 2 TB HDD is off (its volume server is scaled to 0) new data is written with one copy,
-# so the SSDs do not fill up with a second copy. When the HDD volume server is back, the filer rule
-# returns to 2 copies, single-copy volumes are set to 2 copies and every missing copy is made on the
-# HDD (never on the SSDs). Runs often and does at most 20 copies per run.
+# Keeps SeaweedFS replication healthy around the 2 TB HDD, which is powered off while someone is home.
+# HDD off (volume server scaled to 0): new data gets 1 copy, so the SSDs do not fill with a second copy.
+# HDD on: new data gets 2 copies and, in this order of priority and with a cap per run, the job
+#   1. copies single-copy volumes (HDD preferred),
+#   2. makes missing second copies on the HDD (never on the SSDs),
+#   3. sets 1-copy volumes created while the HDD was off to 2 copies and copies them to the HDD,
+#   4. for volumes with 3 copies: syncs the copies, then deletes the copy on the fullest SSD,
+#   5. only when 1-4 have nothing to do: moves the second copy of volumes that sit on two SSDs to the HDD.
+# Every step repeats on each run, so it finishes by itself whenever the HDD is on.
+# Home Assistant switches the HDD off when SeaweedFS_master_under_replicated_volumes plus the number of
+# SSD volume copies above the HDD's copies is 0 (the sensor in the HA configuration).
 apiVersion: v1
 kind: ConfigMap
 metadata:
@@ -17,25 +24,57 @@ data:
     T=$(cat /var/run/secrets/kubernetes.io/serviceaccount/token)
     WANT=$(curl -s --cacert /var/run/secrets/kubernetes.io/serviceaccount/ca.crt -H "Authorization: Bearer $T" "https://kubernetes.default.svc/apis/apps/v1/namespaces/seaweedfs/statefulsets/$HDD/scale" | grep -o '"replicas": *[0-9]*' | head -1 | tr -dc 0-9)
     [ -n "$WANT" ] || { echo "cannot read replicas"; exit 1; }
-    LIST=$(echo volume.list | shell 2>&1)
-    DST=$(echo "$LIST" | awk -v h="DataNode $HDD" 'index($0,h){print $2; exit}')
     if [ "$WANT" = 0 ]; then
       echo "HDD off: new data gets 1 copy"
       printf 'fs.configure -locationPrefix=/ -replication=000 -apply\n' | shell
       exit 0
     fi
+    LIST=$(echo volume.list | shell 2>&1)
+    DST=$(echo "$LIST" | awk -v h="DataNode $HDD" 'index($0,h){print $2; exit}')
     [ -n "$DST" ] || { echo "HDD volume server not registered yet"; exit 0; }
-    echo "HDD on: new data gets 2 copies, healing onto $DST"
+    echo "HDD on: new data gets 2 copies, target $DST"
     printf 'fs.configure -locationPrefix=/ -replication=010 -apply\n' | shell
+
+    # One line per volume: id copies placement node|files node|files ...
+    echo "$LIST" | awk '
+      /DataNode /{n=$2}
+      /volume Id:/{
+        id=$2; gsub(/Id:|,/,"",id); fc=0; dc=0; rp=""
+        if (match($0,/FileCount:[0-9]+/)) fc=substr($0,RSTART+10,RLENGTH-10)
+        if (match($0,/DeleteCount:[0-9]+/)) dc=substr($0,RSTART+12,RLENGTH-12)
+        if (match($0,/ReplicaPlacement:[0-9]+/)) rp=substr($0,RSTART+17,RLENGTH-17)
+        c[id]++; r[id]=r[id] " " n "|" (fc-dc); p[id]=rp }
+      END{ for (i in c) print i, c[i], p[i], r[i] }' > /tmp/vols.txt
+
+    : > /tmp/p1; : > /tmp/p2; : > /tmp/p3; : > /tmp/p4; : > /tmp/p5
+    # Plan of the built-in fixer (simulation): "replicating volume ID 010 from SRC to dataNode DST ..."
+    printf 'lock\nvolume.fix.replication\nunlock\n' | shell 2>&1 | grep '^replicating' > /tmp/plan.txt
+    awk -v hdd="$HDD" 'NR==FNR{ if ($2==1) single[$1]=1; next }
+      { id=$3; cmd="volume.copy -source " $6 " -target " $9 " -volumeId " id
+        if (id in single) print cmd > "/tmp/p1"; else if (index($9,hdd)) print cmd > "/tmp/p2" }' /tmp/vols.txt /tmp/plan.txt
+    awk -v hdd="$HDD" -v dst="$DST" '$3=="000"{ src=""
+        for(i=4;i<=NF;i++){ split($i,a,"|"); if (a[1] !~ hdd) src=a[1] }
+        print "volume.configure.replication -volumeId " $1 " -replication 010"
+        if ($2==1 && src!="") print "volume.copy -source " src " -target " dst " -volumeId " $1 }' /tmp/vols.txt > /tmp/p3
+    awk -v hdd="$HDD" '$2>=3{ h=0; bp=99; best=""
+        for(i=4;i<=NF;i++){ split($i,a,"|"); if (a[1] ~ hdd) h=1; else { q=(a[1]~/pi4-disk2/)?1:(a[1]~/pi3-1-disk1/)?2:(a[1]~/pi4-disk1/)?3:4; if (q<bp){bp=q; best=a[1]} } }
+        eq=1; first=""
+        for(i=4;i<=NF;i++){ split($i,a,"|"); if (a[1]==best) continue; if (first=="") first=a[2]; else if (a[2]!=first) eq=0 }
+        if (h && eq) print "volume.delete -node " best " -volumeId " $1; else if (h) print "volume.check.disk -volumeId " $1 " -apply" }' /tmp/vols.txt > /tmp/p4
+    awk -v hdd="$HDD" -v dst="$DST" '$2==2{ h=0; bp=99; best=""
+        for(i=4;i<=NF;i++){ split($i,a,"|"); if (a[1] ~ hdd) h=1; else { q=(a[1]~/pi4-disk2/)?1:(a[1]~/pi3-1-disk1/)?2:(a[1]~/pi4-disk1/)?3:4; if (q<bp){bp=q; best=a[1]} } }
+        if (!h) print "volume.move -source " best " -target " dst " -volumeId " $1 }' /tmp/vols.txt > /tmp/p5
+
     {
       echo lock
-      echo "$LIST" | awk '/DataNode /{n=$2} /volume Id:/ && /ReplicaPlacement:000/ {i=$2; gsub(/Id:|,/,"",i); print i, n}' | head -20 | while read -r id src; do
-        echo "volume.configure.replication -volumeId $id -replication 010"
-        [ "$src" = "$DST" ] || echo "volume.copy -source $src -target $DST -volumeId $id"
-      done
-      printf 'lock\nvolume.fix.replication\nunlock\n' | shell 2>&1 | grep "^replicating" | grep "to dataNode $HDD" | awk '{print "volume.copy -source " $6 " -target " $9 " -volumeId " $3}' | head -20
+      cat /tmp/p1
+      head -15 /tmp/p2
+      head -40 /tmp/p3
+      head -30 /tmp/p4
+      if [ ! -s /tmp/p1 ] && [ ! -s /tmp/p2 ] && [ ! -s /tmp/p3 ] && [ ! -s /tmp/p4 ]; then head -10 /tmp/p5; fi
       echo unlock
     } > /tmp/cmds.txt
+    echo "plan: single=$(grep -c . /tmp/p1) missing=$(grep -c . /tmp/p2) convert=$(grep -c . /tmp/p3) dedupe=$(grep -c . /tmp/p4) balance=$(grep -c . /tmp/p5)"
     shell < /tmp/cmds.txt
 ---
 apiVersion: batch/v1
@@ -50,7 +89,7 @@ spec:
   failedJobsHistoryLimit: 1
   jobTemplate:
     spec:
-      activeDeadlineSeconds: 3000
+      activeDeadlineSeconds: 3300
       backoffLimit: 0
       template:
         spec:
