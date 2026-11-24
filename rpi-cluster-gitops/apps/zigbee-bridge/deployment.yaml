@@ -32,12 +32,15 @@ spec:
             - -c
             - |
               set -e
-              apk add --no-cache ser2net
+              # Retry: the pod must start even if the network is not up yet after a reboot.
+              until apk add --no-cache ser2net; do sleep 5; done
               # Alpine 3.20 ships ser2net 3.5.1, which uses the classic plain-text
               # ser2net.conf format (port:state:timeout:device:serial-params) -
               # NOT the YAML config format added in ser2net 4.x.
+              # kickolduser: a new connection replaces an old half-open one (after a Home Assistant
+              # restart or a Wi-Fi blip), otherwise ser2net refuses ZHA until this pod restarts.
               cat > /etc/ser2net.conf << 'EOF'
-              6638:raw:0:/dev/serial/by-id/usb-ITEAD_SONOFF_Zigbee_3.0_USB_Dongle_Plus_V2_20220713113305-if00:115200 8DATABITS NONE 1STOPBIT XONXOFF
+              6638:raw:0:/dev/serial/by-id/usb-ITEAD_SONOFF_Zigbee_3.0_USB_Dongle_Plus_V2_20220713113305-if00:115200 8DATABITS NONE 1STOPBIT XONXOFF kickolduser
               EOF
               exec ser2net -c /etc/ser2net.conf -d
           securityContext:
