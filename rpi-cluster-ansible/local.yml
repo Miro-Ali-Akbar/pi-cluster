@@ -545,11 +545,11 @@
             state: started
             daemon_reload: "{{ unit_health_units.changed }}"
 
-    # --- pi4: IPv6 forwarding for the OpenThread border router (the dongle is plugged into pi4) ---
+    # --- pi3-1: IPv6 forwarding for the OpenThread border router (the dongle is plugged into pi3-1) ---
     # OTBR routes between the LAN (eth0) and the Thread mesh (wpan0). Without forwarding, hosts on the
     # LAN (matter-server on phone-1) cannot reach Thread devices through it.
     - name: Enable IPv6 forwarding for OTBR
-      when: ansible_hostname == 'pi4'
+      when: ansible_hostname == 'pi3-1'
       ansible.posix.sysctl:
         name: net.ipv6.conf.all.forwarding
         value: "1"

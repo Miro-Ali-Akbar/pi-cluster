@@ -15,7 +15,7 @@ installs and that re-runs on every boot. The phone is set up by `phone-1/` inste
 - **Every Pi:** joins K3s as an agent of `k3s_server_ip` (pinned `k3s_version`), once, and installs the SMART metrics timer.
 - **pi4:** installs `cluster-backup-export` and authorizes `phone-1`'s key for root, restricted to that one command (it streams a tar.gz of the SeaweedFS master metadata).
 - **Every Pi:** installs `seaweedfs-stale-mounts.timer`, which lazily unmounts dead SeaweedFS FUSE mounts.
-- **pi4:** enables IPv6 forwarding (`/etc/sysctl.d/90-otbr-forwarding.conf`): the Thread border router running there routes between the LAN and the Thread mesh.
+- **pi3-1:** enables IPv6 forwarding (`/etc/sysctl.d/90-otbr-forwarding.conf`): the Thread border router running there routes between the LAN and the Thread mesh.
 - **pi4:** installs `cluster-standby-receive` and authorizes `phone-1`'s push key, restricted to it.
 - Hardware-specific tasks are gated on `ansible_hostname`, not role: the dongles are plugged
   into specific nodes.

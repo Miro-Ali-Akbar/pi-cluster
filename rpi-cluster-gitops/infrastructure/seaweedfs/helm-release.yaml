@@ -182,7 +182,7 @@ spec:
         replicas: 1
         rack: pi3-1-wd
         nodeSelector: |
-          kubernetes.io/hostname: pi3-2
+          kubernetes.io/hostname: pi4
         initContainers: |
           - name: verify-real-disk
             image: busybox
