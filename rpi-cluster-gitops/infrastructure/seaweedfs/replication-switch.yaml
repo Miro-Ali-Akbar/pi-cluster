@@ -4,7 +4,7 @@
 #   1. copies single-copy volumes (HDD preferred),
 #   2. makes missing second copies on the HDD (never on the SSDs),
 #   3. sets 1-copy volumes created while the HDD was off to 2 copies and copies them to the HDD,
-#   4. for volumes with 3 copies: syncs the copies, then deletes the copy on the fullest SSD,
+#   4. for volumes with 3 copies: deletes the copy with the fewest files (on a tie, on the fullest SSD),
 #   5. only when 1-4 have nothing to do: moves the second copy of volumes that sit on two SSDs to the HDD.
 # Every step repeats on each run, so it finishes by itself whenever the HDD is on.
 # Home Assistant switches the HDD off when SeaweedFS_master_under_replicated_volumes plus the number of
@@ -56,11 +56,13 @@ data:
         for(i=4;i<=NF;i++){ split($i,a,"|"); if (a[1] !~ hdd) src=a[1] }
         print "volume.configure.replication -volumeId " $1 " -replication 010"
         if ($2==1 && src!="") print "volume.copy -source " src " -target " dst " -volumeId " $1 }' /tmp/vols.txt > /tmp/p3
-    awk -v hdd="$HDD" '$2>=3{ h=0; bp=99; best=""
-        for(i=4;i<=NF;i++){ split($i,a,"|"); if (a[1] ~ hdd) h=1; else { q=(a[1]~/pi4-disk2/)?1:(a[1]~/pi3-1-disk1/)?2:(a[1]~/pi4-disk1/)?3:4; if (q<bp){bp=q; best=a[1]} } }
-        eq=1; first=""
-        for(i=4;i<=NF;i++){ split($i,a,"|"); if (a[1]==best) continue; if (first=="") first=a[2]; else if (a[2]!=first) eq=0 }
-        if (h && eq) print "volume.delete -node " best " -volumeId " $1; else if (h) print "volume.check.disk -volumeId " $1 " -apply" }' /tmp/vols.txt > /tmp/p4
+    # 3 copies: delete the copy with the fewest files (the others hold everything it has), on a tie the
+    # one on the fullest SSD. If the copies differ by more than 3 files, leave the volume for a person.
+    awk -v hdd="$HDD" '$2>=3{ mn=1e18; mx=0; best=""; bq=-1
+        for(i=4;i<=NF;i++){ split($i,a,"|"); if (a[2]>mx) mx=a[2] }
+        for(i=4;i<=NF;i++){ split($i,a,"|"); q=(a[1] ~ hdd)?0:(a[1]~/pi4-disk2/)?4:(a[1]~/pi3-1-disk1/)?3:(a[1]~/pi4-disk1/)?2:1
+          if (a[2]<mn || (a[2]==mn && q>bq)) { mn=a[2]; bq=q; best=a[1] } }
+        if (mx-mn<=3) print "volume.delete -node " best " -volumeId " $1 }' /tmp/vols.txt > /tmp/p4
     awk -v hdd="$HDD" -v dst="$DST" '$2==2{ h=0; bp=99; best=""
         for(i=4;i<=NF;i++){ split($i,a,"|"); if (a[1] ~ hdd) h=1; else { q=(a[1]~/pi4-disk2/)?1:(a[1]~/pi3-1-disk1/)?2:(a[1]~/pi4-disk1/)?3:4; if (q<bp){bp=q; best=a[1]} } }
         if (!h) print "volume.move -source " best " -target " dst " -volumeId " $1 }' /tmp/vols.txt > /tmp/p5
