@@ -217,10 +217,16 @@ data:
             annotations:
               summary: "{{ $labels.node }} {{ $labels.mountpoint }} has under 10% free"
           - alert: PodCrashLooping
-            expr: increase(kube_pod_container_status_restarts_total[30m]) > 3
+            # otbr has its own, slower alert below: it restarts whenever pi3-2 undervolts.
+            expr: increase(kube_pod_container_status_restarts_total{namespace!="otbr"}[30m]) > 3
             for: 15m
             annotations:
               summary: "{{ $labels.namespace }}/{{ $labels.pod }} restarted {{ $value | printf \"%.0f\" }} times in 30 min"
+          - alert: OtbrCrashLooping
+            expr: increase(kube_pod_container_status_restarts_total{namespace="otbr"}[3h]) > 10
+            for: 3h
+            annotations:
+              summary: "The Thread border router keeps restarting (pi3-2 power supply?)"
           - alert: DeploymentUnavailable
             expr: kube_deployment_status_replicas_available < kube_deployment_spec_replicas
             for: 20m
